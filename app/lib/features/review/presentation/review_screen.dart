@@ -6,9 +6,11 @@ import 'package:video_player/video_player.dart';
 
 import '../../../core/theme/app_spacing.dart';
 import '../../analysis/domain/ball_observation.dart';
+import '../../analysis/domain/rally.dart';
 import '../../library/application/library_providers.dart';
 import '../application/review_providers.dart';
 import 'widgets/ball_overlay.dart';
+import 'widgets/rally_timeline.dart';
 import 'widgets/video_controls.dart';
 
 class ReviewScreen extends ConsumerStatefulWidget {
@@ -94,7 +96,11 @@ class _ReviewBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final observations = ref.watch(matchBallObservationsProvider(matchId));
+    final observationsAsync = ref.watch(
+      matchBallObservationsProvider(matchId),
+    );
+    final ralliesAsync = ref.watch(matchRalliesProvider(matchId));
+
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -107,7 +113,7 @@ class _ReviewBody extends ConsumerWidget {
                 Positioned.fill(
                   child: _BallOverlay(
                     controller: controller,
-                    observations: observations.valueOrNull ??
+                    observations: observationsAsync.valueOrNull ??
                         const <BallObservation>[],
                   ),
                 ),
@@ -115,7 +121,29 @@ class _ReviewBody extends ConsumerWidget {
             ),
           ),
           VideoControls(controller: controller),
-          _ObservationsFooter(observations: observations),
+          const Divider(height: 1),
+          _TimelineHeader(
+            rallies: ralliesAsync,
+            observations: observationsAsync,
+          ),
+          Expanded(
+            child: ralliesAsync.when(
+              skipLoadingOnReload: true,
+              data: (rallies) => RallyTimeline(
+                rallies: rallies,
+                onSeek: (ms) => controller.seekTo(
+                  Duration(milliseconds: ms),
+                ),
+              ),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.l),
+                  child: Text("Couldn't load rallies: $error"),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -147,30 +175,35 @@ class _BallOverlay extends StatelessWidget {
   }
 }
 
-class _ObservationsFooter extends StatelessWidget {
-  const _ObservationsFooter({required this.observations});
+class _TimelineHeader extends StatelessWidget {
+  const _TimelineHeader({
+    required this.rallies,
+    required this.observations,
+  });
 
+  final AsyncValue<List<Rally>> rallies;
   final AsyncValue<List<BallObservation>> observations;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final body = observations.when(
-      data: (list) => '${list.length} ball detections',
-      loading: () => 'Loading detections…',
-      error: (error, _) => 'Failed to load detections: $error',
-    );
+    final rallyCount = rallies.valueOrNull?.length ?? 0;
+    final observationCount = observations.valueOrNull?.length ?? 0;
+    final detail =
+        '$rallyCount ${rallyCount == 1 ? "rally" : "rallies"}'
+        '  ·  $observationCount ball detections';
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.s,
-        0,
         AppSpacing.s,
         AppSpacing.s,
+        AppSpacing.xs,
       ),
       child: Text(
-        body,
-        style: theme.textTheme.bodyMedium?.copyWith(
+        detail,
+        style: theme.textTheme.labelLarge?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
+          fontFeatures: const [FontFeature.tabularFigures()],
         ),
       ),
     );

@@ -2,6 +2,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../shared/database/app_database_provider.dart';
 import '../../analysis/domain/ball_observation.dart';
+import '../../analysis/domain/rally.dart';
 import '../data/review_repository.dart';
 
 part 'review_providers.g.dart';
@@ -17,4 +18,9 @@ Stream<List<BallObservation>> matchBallObservations(
   String matchId,
 ) {
   return ref.watch(reviewRepositoryProvider).watchObservations(matchId);
+}
+
+@riverpod
+Stream<List<Rally>> matchRallies(MatchRalliesRef ref, String matchId) {
+  return ref.watch(reviewRepositoryProvider).watchRallies(matchId);
 }

@@ -7,8 +7,8 @@ class Rally {
     required this.startTimestampMs,
     required this.endTimestampMs,
     required this.touchCountBySlot,
-    required this.touches,
-    required this.ballObservations,
+    this.touches = const [],
+    this.ballObservations = const [],
   });
 
   final int rallyIndex;
@@ -17,8 +17,14 @@ class Rally {
 
   /// Indexed by [PlayerSlot.index]. Always length 4.
   final List<int> touchCountBySlot;
+
+  /// Empty when this Rally was built as a summary (e.g. for the timeline).
+  /// Populated only when callers explicitly load detail.
   final List<TouchEvent> touches;
   final List<BallObservation> ballObservations;
 
   int get durationMs => endTimestampMs - startTimestampMs;
+
+  int get totalTouches =>
+      touchCountBySlot.fold<int>(0, (sum, count) => sum + count);
 }

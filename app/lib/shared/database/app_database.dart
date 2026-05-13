@@ -41,6 +41,17 @@ class Rallies extends Table {
   IntColumn get rallyIndex => integer()();
   IntColumn get startMs => integer()();
   IntColumn get endMs => integer()();
+
+  // Denormalised touch counts per slot. The rally timeline reads these
+  // straight from the row rather than aggregating Touches per render.
+  IntColumn get touchesHomeLeft =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get touchesHomeRight =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get touchesAwayLeft =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get touchesAwayRight =>
+      integer().withDefault(const Constant(0))();
 }
 
 @DataClassName('TouchRow')
@@ -78,7 +89,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(

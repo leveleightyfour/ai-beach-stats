@@ -4,10 +4,10 @@ import CoreMedia
 import Foundation
 import UIKit
 
-/// Top-level orchestrator. For milestone 4 it only drives the frame
-/// extractor and emits progress / completion events — the remaining
-/// stages (ball detection, pose, tracking, rally, touch) are stubs that
-/// will be wired in later milestones.
+/// Top-level orchestrator. As of milestone 6 it drives frame extraction,
+/// ball detection, per-frame pose detection (only on ball-detected frames),
+/// rally segmentation, and touch attribution. `PlayerTracker` remains a
+/// stub — cross-frame player identity is not used yet.
 protocol PipelineOrchestrating {
     /// Emits an `AsyncStream<PipelineEvent>` for the given session. The
     /// stream completes after the terminal event.
@@ -63,8 +63,9 @@ final class PipelineRunner: PipelineOrchestrating {
                 )) ?? 0
 
                 var framesProcessed: Int64 = 0
-                var ballDetections: Int64 = 0
-                var observations: [BallObservation] = []
+                var ballDetectionsCount: Int64 = 0
+                var detections: [BallDetection] = []
+                var posesByFrame: [Int: [PoseObservation]] = [:]
                 var frameWidth: Int64 = 0
                 var frameHeight: Int64 = 0
                 var previewPath: String? = nil
@@ -89,18 +90,16 @@ final class PipelineRunner: PipelineOrchestrating {
                         }
 
                         if let detection = try? await self.ballDetector.detect(in: frame) {
-                            ballDetections += 1
-                            observations.append(
-                                BallObservation(
-                                    frameIndex: Int64(detection.frameIndex),
-                                    timestampMs: Int64(detection.timestampMs),
-                                    x: Double(detection.boundingBox.origin.x),
-                                    y: Double(detection.boundingBox.origin.y),
-                                    width: Double(detection.boundingBox.size.width),
-                                    height: Double(detection.boundingBox.size.height),
-                                    confidence: detection.confidence
-                                )
-                            )
+                            ballDetectionsCount += 1
+                            detections.append(detection)
+
+                            // Pose only runs on ball-detected frames — the
+                            // touch attributor only consults poses at those
+                            // frames, so this saves a lot of inference.
+                            if let poses = try? await self.poseDetector.detect(in: frame),
+                               !poses.isEmpty {
+                                posesByFrame[frame.frameIndex] = poses
+                            }
                         }
 
                         if frame.frameIndex == 0 ||
@@ -112,7 +111,7 @@ final class PipelineRunner: PipelineOrchestrating {
                                     : 0.0,
                                 framesProcessed: framesProcessed,
                                 totalFrames: Int64(totalFrames),
-                                ballDetectionsSoFar: ballDetections,
+                                ballDetectionsSoFar: ballDetectionsCount,
                                 previewThumbnailPath: previewPath
                             )
                             continuation.yield(
@@ -127,15 +126,78 @@ final class PipelineRunner: PipelineOrchestrating {
                         }
                     }
 
+                    // Brief progress signal that we're past the frame loop.
+                    continuation.yield(
+                        PipelineEvent(
+                            sessionId: sessionId,
+                            type: .progress,
+                            progress: PipelineProgress(
+                                stage: .finalising,
+                                fractionComplete: 1.0,
+                                framesProcessed: framesProcessed,
+                                totalFrames: Int64(totalFrames),
+                                ballDetectionsSoFar: ballDetectionsCount,
+                                previewThumbnailPath: previewPath
+                            ),
+                            result: nil,
+                            error: nil
+                        )
+                    )
+
+                    let frameSize = CGSize(
+                        width: Double(frameWidth),
+                        height: Double(frameHeight)
+                    )
+                    let rallySpans = self.rallySegmenter.segment(
+                        detections: detections,
+                        config: config
+                    )
+                    let rallyResults = rallySpans.map { span -> RallyResult in
+                        let touches = self.touchAttributor.attribute(
+                            rally: span,
+                            ballDetections: detections,
+                            posesByFrame: posesByFrame,
+                            config: config,
+                            frameSize: frameSize
+                        )
+                        let rallyObservations = detections
+                            .filter { detection in
+                                detection.timestampMs >= span.startTimestampMs
+                                    && detection.timestampMs <= span.endTimestampMs
+                            }
+                            .map(Self.toPigeon(_:))
+                        var counts: [Int64] = [0, 0, 0, 0]
+                        for touch in touches where (0..<4).contains(touch.playerSlotIndex) {
+                            counts[touch.playerSlotIndex] += 1
+                        }
+                        let pigeonTouches = touches.map { touch -> TouchEvent in
+                            TouchEvent(
+                                timestampMs: Int64(touch.timestampMs),
+                                playerSlot: PlayerSlot(rawValue: touch.playerSlotIndex)
+                                    ?? .homeLeft,
+                                ballX: Double(touch.ballPosition.x),
+                                ballY: Double(touch.ballPosition.y)
+                            )
+                        }
+                        return RallyResult(
+                            rallyIndex: Int64(span.rallyIndex),
+                            startTimestampMs: Int64(span.startTimestampMs),
+                            endTimestampMs: Int64(span.endTimestampMs),
+                            touchCountBySlot: counts,
+                            touches: pigeonTouches,
+                            ballObservations: rallyObservations
+                        )
+                    }
+
                     let elapsed = Int64(Date().timeIntervalSince(started) * 1000)
                     let result = PipelineResult(
                         matchId: matchId,
-                        rallies: [],
-                        ballObservations: observations,
+                        rallies: rallyResults,
+                        ballObservations: detections.map(Self.toPigeon(_:)),
                         frameWidth: frameWidth,
                         frameHeight: frameHeight,
                         totalFramesProcessed: framesProcessed,
-                        totalBallDetections: ballDetections,
+                        totalBallDetections: ballDetectionsCount,
                         totalDurationMs: elapsed
                     )
                     continuation.yield(
@@ -176,6 +238,18 @@ final class PipelineRunner: PipelineOrchestrating {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    private static func toPigeon(_ detection: BallDetection) -> BallObservation {
+        BallObservation(
+            frameIndex: Int64(detection.frameIndex),
+            timestampMs: Int64(detection.timestampMs),
+            x: Double(detection.boundingBox.origin.x),
+            y: Double(detection.boundingBox.origin.y),
+            width: Double(detection.boundingBox.size.width),
+            height: Double(detection.boundingBox.size.height),
+            confidence: detection.confidence
+        )
     }
 
     private static func estimateTotalFrames(

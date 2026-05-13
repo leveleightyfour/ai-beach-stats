@@ -54,9 +54,10 @@ struct RallySpan {
     let endTimestampMs: Int
 }
 
-/// Single attributed touch, before being mapped to the wire-format `PlayerSlot`.
+/// Single attributed touch. `playerSlotIndex` matches the on-the-wire
+/// `PlayerSlot` ordinal (0=homeLeft, 1=homeRight, 2=awayLeft, 3=awayRight).
 struct AttributedTouch {
     let timestampMs: Int
-    let trackId: PlayerTrackId
+    let playerSlotIndex: Int
     let ballPosition: CGPoint
 }
