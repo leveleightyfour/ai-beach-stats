@@ -54,7 +54,9 @@ class AnalysisController extends _$AnalysisController {
       debugPrint(
         '[AnalysisController] event type=${event.type} '
         'frames=${event.progress?.framesProcessed} '
-        'balls=${event.progress?.ballDetectionsSoFar}',
+        'balls=${event.progress?.ballDetectionsSoFar} '
+        'errorCode=${event.error?.code} '
+        'errorMessage=${event.error?.message}',
       );
       final current = state.valueOrNull;
       if (current == null) return;

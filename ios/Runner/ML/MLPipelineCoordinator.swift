@@ -114,7 +114,11 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
     // MARK: - Event dispatch
 
     private func dispatch(event: PipelineEvent) {
-        print("[MLPipelineCoordinator] dispatch event session=\(event.sessionId) type=\(event.type)")
+        var detail = ""
+        if event.type == .error, let error = event.error {
+            detail = " code=\(error.code) message=\(error.message)"
+        }
+        print("[MLPipelineCoordinator] dispatch event session=\(event.sessionId) type=\(event.type)\(detail)")
         // Pigeon Flutter API calls must originate on the platform thread.
         let listener = self.eventListener
         DispatchQueue.main.async {

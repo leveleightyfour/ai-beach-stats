@@ -56,8 +56,15 @@ final class FrameExtractor: FrameExtracting {
         config: PipelineRuntimeConfig,
         continuation: AsyncThrowingStream<PipelineFrame, Error>.Continuation
     ) async throws {
+        let fm = FileManager.default
+        let exists = fm.fileExists(atPath: videoURL.path)
+        let size = (try? fm.attributesOfItem(atPath: videoURL.path)[.size]) as? Int ?? -1
+        let readable = fm.isReadableFile(atPath: videoURL.path)
+        print("[FrameExtractor] start path=\(videoURL.path) exists=\(exists) readable=\(readable) size=\(size)")
+
         let asset = AVURLAsset(url: videoURL)
         let tracks = try await asset.loadTracks(withMediaType: .video)
+        print("[FrameExtractor] tracks loaded count=\(tracks.count)")
         guard let track = tracks.first else {
             throw FrameExtractorError.missingVideoTrack
         }
@@ -66,6 +73,7 @@ final class FrameExtractor: FrameExtracting {
         let sourceRate = nominalFrameRate > 0 ? nominalFrameRate : 30.0
         let targetRate = max(1, Float(config.frameRateHz))
         let stride = max(1, Int((sourceRate / targetRate).rounded()))
+        print("[FrameExtractor] sourceRate=\(sourceRate) targetRate=\(targetRate) stride=\(stride)")
 
         let reader = try AVAssetReader(asset: asset)
         let outputSettings: [String: Any] = [

@@ -210,6 +210,7 @@ final class PipelineRunner: PipelineOrchestrating {
                         )
                     )
                 } catch is CancellationError {
+                    print("[PipelineRunner] cancelled sessionId=\(sessionId)")
                     continuation.yield(
                         PipelineEvent(
                             sessionId: sessionId,
@@ -220,9 +221,10 @@ final class PipelineRunner: PipelineOrchestrating {
                         )
                     )
                 } catch {
+                    print("[PipelineRunner] ERROR sessionId=\(sessionId) error=\(error) localizedDescription=\(error.localizedDescription)")
                     let pipelineError = PipelineError(
                         code: "extraction_failed",
-                        message: error.localizedDescription
+                        message: "\(type(of: error)): \(error.localizedDescription)"
                     )
                     continuation.yield(
                         PipelineEvent(
