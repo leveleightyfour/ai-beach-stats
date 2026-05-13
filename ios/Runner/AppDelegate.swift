@@ -7,7 +7,7 @@ import UIKit
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        NSLog("[AppDelegate] didFinishLaunchingWithOptions start")
+        print("[AppDelegate] didFinishLaunchingWithOptions start")
         GeneratedPluginRegistrant.register(with: self)
 
         // super sets up window + rootViewController. Must run BEFORE we
@@ -18,16 +18,13 @@ import UIKit
         )
 
         if let controller = window?.rootViewController as? FlutterViewController {
-            NSLog("[AppDelegate] FlutterViewController obtained; registering MLPipelineCoordinator")
+            print("[AppDelegate] FlutterViewController obtained; registering MLPipelineCoordinator")
             MLPipelineCoordinator.register(with: controller.binaryMessenger)
         } else {
-            NSLog(
-                "[AppDelegate] ERROR: rootViewController is not a FlutterViewController (type=%@). MLPipeline not registered.",
-                String(describing: type(of: window?.rootViewController))
-            )
+            print("[AppDelegate] ERROR: rootViewController is not a FlutterViewController (type=\(String(describing: type(of: window?.rootViewController)))). MLPipeline not registered.")
         }
 
-        NSLog("[AppDelegate] didFinishLaunchingWithOptions done (result=%@)", result ? "true" : "false")
+        print("[AppDelegate] didFinishLaunchingWithOptions done (result=\(result))")
         return result
     }
 }
