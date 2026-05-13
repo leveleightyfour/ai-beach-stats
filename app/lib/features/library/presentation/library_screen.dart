@@ -90,7 +90,11 @@ class _MatchGrid extends StatelessWidget {
         final match = matches[index];
         return MatchTile(
           match: match,
-          onTap: () => context.push('/analysis/${match.id}'),
+          onTap: () => context.push(
+            match.isProcessed
+                ? '/review/${match.id}'
+                : '/analysis/${match.id}',
+          ),
         );
       },
     );

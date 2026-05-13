@@ -32,6 +32,12 @@ class MatchTile extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   _Thumbnail(path: match.thumbnailPath),
+                  if (match.isProcessed)
+                    const Positioned(
+                      left: AppSpacing.xs,
+                      top: AppSpacing.xs,
+                      child: _ProcessedBadge(),
+                    ),
                   Positioned(
                     right: AppSpacing.xs,
                     bottom: AppSpacing.xs,
@@ -90,6 +96,42 @@ class _Thumbnail extends StatelessWidget {
           Icons.broken_image_outlined,
           color: colors.onSurfaceVariant,
           size: 32,
+        ),
+      ),
+    );
+  }
+}
+
+class _ProcessedBadge extends StatelessWidget {
+  const _ProcessedBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.primary,
+        borderRadius: BorderRadius.circular(AppRadius.s),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.xs,
+          vertical: 2,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check, size: 12, color: colors.onPrimary),
+            const SizedBox(width: 4),
+            Text(
+              'Processed',
+              style: TextStyle(
+                color: colors.onPrimary,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ),
     );

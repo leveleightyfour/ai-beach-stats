@@ -12,6 +12,7 @@ class AnalysisState {
     this.result,
     this.errorMessage,
     this.wasCancelled = false,
+    this.alreadyProcessed = false,
   });
 
   final Match match;
@@ -20,8 +21,16 @@ class AnalysisState {
   final String? errorMessage;
   final bool wasCancelled;
 
+  /// True if the controller short-circuited because the match had already
+  /// been processed when the screen opened. The UI shows a CTA to open
+  /// the review screen rather than running the pipeline again.
+  final bool alreadyProcessed;
+
   bool get isComplete =>
-      result != null || errorMessage != null || wasCancelled;
+      result != null ||
+      errorMessage != null ||
+      wasCancelled ||
+      alreadyProcessed;
 
   AnalysisState applying(PipelineEvent event) {
     switch (event.type) {
@@ -32,6 +41,7 @@ class AnalysisState {
           result: result,
           errorMessage: errorMessage,
           wasCancelled: wasCancelled,
+          alreadyProcessed: alreadyProcessed,
         );
       case PipelineEventType.completion:
         return AnalysisState(

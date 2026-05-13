@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/utils/duration_format.dart';
@@ -53,7 +54,9 @@ class _AnalysisBody extends StatelessWidget {
         children: [
           _PreviewThumbnail(path: state.latestProgress?.previewThumbnailPath),
           const SizedBox(height: AppSpacing.l),
-          if (state.errorMessage != null)
+          if (state.alreadyProcessed)
+            _AlreadyProcessedBlock(matchId: state.match.id)
+          else if (state.errorMessage != null)
             _ErrorBlock(message: state.errorMessage!, onRetry: onRetry)
           else if (state.wasCancelled)
             const _StatusBlock(
@@ -61,7 +64,7 @@ class _AnalysisBody extends StatelessWidget {
               detail: 'Processing was cancelled before completion.',
             )
           else if (state.result != null)
-            _ResultBlock(result: state.result!)
+            _ResultBlock(matchId: state.match.id, result: state.result!)
           else
             _ProgressBlock(progress: state.latestProgress),
         ],
@@ -154,8 +157,9 @@ class _ProgressBlock extends StatelessWidget {
 }
 
 class _ResultBlock extends StatelessWidget {
-  const _ResultBlock({required this.result});
+  const _ResultBlock({required this.matchId, required this.result});
 
+  final String matchId;
   final PipelineResult result;
 
   @override
@@ -181,6 +185,53 @@ class _ResultBlock extends StatelessWidget {
           value: formatDurationMs(result.totalDurationMs),
         ),
         _Stat(label: 'Rallies detected', value: '${result.rallies.length}'),
+        const SizedBox(height: AppSpacing.l),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
+            onPressed: () => context.pushReplacement('/review/$matchId'),
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Open review'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AlreadyProcessedBlock extends StatelessWidget {
+  const _AlreadyProcessedBlock({required this.matchId});
+
+  final String matchId;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Already processed',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'Pipeline results are ready. Open review to inspect detections.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.m),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
+            onPressed: () => context.pushReplacement('/review/$matchId'),
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Open review'),
+          ),
+        ),
       ],
     );
   }

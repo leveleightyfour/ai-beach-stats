@@ -139,6 +139,9 @@ class PipelineResult {
   PipelineResult({
     required this.matchId,
     required this.rallies,
+    required this.ballObservations,
+    required this.frameWidth,
+    required this.frameHeight,
     required this.totalFramesProcessed,
     required this.totalBallDetections,
     required this.totalDurationMs,
@@ -146,6 +149,19 @@ class PipelineResult {
 
   final String matchId;
   final List<RallyResult> rallies;
+
+  /// All ball detections from the run, in chronological order. Once rally
+  /// segmentation lands these will move into [RallyResult.ballObservations]
+  /// and this list will likely disappear; for now they're shipped flat so
+  /// the review screen can render an overlay without rallies existing yet.
+  final List<BallObservation> ballObservations;
+
+  /// Source-video resolution. The review-screen overlay needs this to map
+  /// ball bounding boxes (which are in source-pixel coords) into Flutter
+  /// layout coordinates.
+  final int frameWidth;
+  final int frameHeight;
+
   final int totalFramesProcessed;
 
   /// Total frames in which the ball was detected with confidence above

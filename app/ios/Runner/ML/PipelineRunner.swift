@@ -64,6 +64,9 @@ final class PipelineRunner: PipelineOrchestrating {
 
                 var framesProcessed: Int64 = 0
                 var ballDetections: Int64 = 0
+                var observations: [BallObservation] = []
+                var frameWidth: Int64 = 0
+                var frameHeight: Int64 = 0
                 var previewPath: String? = nil
 
                 do {
@@ -81,10 +84,23 @@ final class PipelineRunner: PipelineOrchestrating {
                                 frame: frame,
                                 sessionId: sessionId
                             )
+                            frameWidth = Int64(CVPixelBufferGetWidth(frame.pixelBuffer))
+                            frameHeight = Int64(CVPixelBufferGetHeight(frame.pixelBuffer))
                         }
 
-                        if let _ = try? await self.ballDetector.detect(in: frame) {
+                        if let detection = try? await self.ballDetector.detect(in: frame) {
                             ballDetections += 1
+                            observations.append(
+                                BallObservation(
+                                    frameIndex: Int64(detection.frameIndex),
+                                    timestampMs: Int64(detection.timestampMs),
+                                    x: Double(detection.boundingBox.origin.x),
+                                    y: Double(detection.boundingBox.origin.y),
+                                    width: Double(detection.boundingBox.size.width),
+                                    height: Double(detection.boundingBox.size.height),
+                                    confidence: detection.confidence
+                                )
+                            )
                         }
 
                         if frame.frameIndex == 0 ||
@@ -115,6 +131,9 @@ final class PipelineRunner: PipelineOrchestrating {
                     let result = PipelineResult(
                         matchId: matchId,
                         rallies: [],
+                        ballObservations: observations,
+                        frameWidth: frameWidth,
+                        frameHeight: frameHeight,
                         totalFramesProcessed: framesProcessed,
                         totalBallDetections: ballDetections,
                         totalDurationMs: elapsed

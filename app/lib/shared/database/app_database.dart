@@ -1,5 +1,5 @@
-// Drift database for the app. Run `dart run build_runner build` after
-// editing the schema or annotations to regenerate `app_database.g.dart`.
+// Drift schema for the app. Run `dart run build_runner build` to
+// regenerate `app_database.g.dart` after editing.
 
 import 'dart:io';
 
@@ -18,6 +18,17 @@ class Matches extends Table {
   IntColumn get durationMs => integer()();
   DateTimeColumn get importedAt => dateTime()();
   TextColumn get thumbnailPath => text().nullable()();
+
+  /// Non-null once the on-device pipeline has produced a successful result
+  /// for this match. The library uses it to route tile taps and to badge
+  /// processed matches.
+  DateTimeColumn get processedAt => dateTime().nullable()();
+
+  /// Source-video resolution captured during processing. Stored so the
+  /// review-screen overlay can scale ball bounding boxes back into layout
+  /// coordinates without re-opening the video.
+  IntColumn get frameWidth => integer().nullable()();
+  IntColumn get frameHeight => integer().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -45,7 +56,13 @@ class Touches extends Table {
 @DataClassName('BallObservationRow')
 class BallObservations extends Table {
   IntColumn get id => integer().autoIncrement()();
-  IntColumn get rallyId => integer().references(Rallies, #id)();
+
+  /// Observations always belong to a match.
+  TextColumn get matchId => text().references(Matches, #id)();
+
+  /// Observations may belong to a rally once rally segmentation runs.
+  /// For milestone 5b they're all attached at the match level only.
+  IntColumn get rallyId => integer().nullable().references(Rallies, #id)();
   IntColumn get frameIndex => integer()();
   IntColumn get timestampMs => integer()();
   RealColumn get x => real()();
@@ -61,7 +78,27 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await m.createAll();
+        },
+        onUpgrade: (m, from, to) async {
+          // Prototype convenience: no shipped data yet. Wipe and rebuild on
+          // any version bump. Replace with a real migration once we have
+          // installs to preserve.
+          await customStatement('PRAGMA foreign_keys = OFF');
+          for (final table in allTables) {
+            await customStatement(
+              'DROP TABLE IF EXISTS ${table.actualTableName}',
+            );
+          }
+          await m.createAll();
+          await customStatement('PRAGMA foreign_keys = ON');
+        },
+      );
 }
 
 QueryExecutor _openConnection() {

@@ -37,8 +37,26 @@ class MatchRepository {
             durationMs: match.durationMs,
             importedAt: match.importedAt,
             thumbnailPath: Value(match.thumbnailPath),
+            processedAt: Value(match.processedAt),
+            frameWidth: Value(match.frameWidth),
+            frameHeight: Value(match.frameHeight),
           ),
         );
+  }
+
+  Future<void> markProcessed({
+    required String matchId,
+    required DateTime processedAt,
+    required int frameWidth,
+    required int frameHeight,
+  }) async {
+    await (_db.update(_db.matches)..where((t) => t.id.equals(matchId))).write(
+      MatchesCompanion(
+        processedAt: Value(processedAt),
+        frameWidth: Value(frameWidth),
+        frameHeight: Value(frameHeight),
+      ),
+    );
   }
 
   Future<void> delete(String id) async {
@@ -52,5 +70,8 @@ class MatchRepository {
         durationMs: row.durationMs,
         importedAt: row.importedAt,
         thumbnailPath: row.thumbnailPath,
+        processedAt: row.processedAt,
+        frameWidth: row.frameWidth,
+        frameHeight: row.frameHeight,
       );
 }
