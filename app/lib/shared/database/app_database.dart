@@ -1,10 +1,16 @@
-// Drift schema for the app. Tables match the milestone-1 persistence model.
-//
-// Run `dart run build_runner build` to regenerate `app_database.g.dart`
-// after editing the schema.
+// Drift database for the app. Run `dart run build_runner build` after
+// editing the schema or annotations to regenerate `app_database.g.dart`.
+
+import 'dart:io';
 
 import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
+part 'app_database.g.dart';
+
+@DataClassName('MatchRow')
 class Matches extends Table {
   TextColumn get id => text()();
   TextColumn get title => text()();
@@ -17,6 +23,7 @@ class Matches extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+@DataClassName('RallyRow')
 class Rallies extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get matchId => text().references(Matches, #id)();
@@ -25,6 +32,7 @@ class Rallies extends Table {
   IntColumn get endMs => integer()();
 }
 
+@DataClassName('TouchRow')
 class Touches extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get rallyId => integer().references(Rallies, #id)();
@@ -34,6 +42,7 @@ class Touches extends Table {
   RealColumn get ballY => real()();
 }
 
+@DataClassName('BallObservationRow')
 class BallObservations extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get rallyId => integer().references(Rallies, #id)();
@@ -46,7 +55,19 @@ class BallObservations extends Table {
   RealColumn get confidence => real()();
 }
 
-// AppDatabase class deliberately omitted from this scaffold — wire it up
-// once we're ready to persist results from the pipeline. Drift's
-// `@DriftDatabase(tables: [...])` annotation goes here, generating
-// `app_database.g.dart`.
+@DriftDatabase(tables: [Matches, Rallies, Touches, BallObservations])
+class AppDatabase extends _$AppDatabase {
+  AppDatabase() : super(_openConnection());
+  AppDatabase.forTesting(super.executor);
+
+  @override
+  int get schemaVersion => 1;
+}
+
+QueryExecutor _openConnection() {
+  return LazyDatabase(() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File(p.join(dir.path, 'beach_stats.sqlite'));
+    return NativeDatabase.createInBackground(file);
+  });
+}
