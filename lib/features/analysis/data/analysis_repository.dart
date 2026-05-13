@@ -29,6 +29,17 @@ class AnalysisRepository {
     });
   }
 
+  /// Wipes rallies, touches, observations, and clears the match's
+  /// processedAt + frame dimensions. After this, the match looks
+  /// freshly imported again and tapping it routes to /analysis.
+  /// Single transaction; safe to call while the user is on /review.
+  Future<void> resetResults(String matchId) async {
+    await _db.transaction(() async {
+      await _wipeExisting(matchId);
+      await _matchRepository.clearProcessed(matchId);
+    });
+  }
+
   Future<void> _wipeExisting(String matchId) async {
     final rallyIdsForMatch = _db.selectOnly(_db.rallies)
       ..addColumns([_db.rallies.id])

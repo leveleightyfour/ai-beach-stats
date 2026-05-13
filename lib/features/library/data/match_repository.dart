@@ -59,6 +59,16 @@ class MatchRepository {
     );
   }
 
+  Future<void> clearProcessed(String matchId) async {
+    await (_db.update(_db.matches)..where((t) => t.id.equals(matchId))).write(
+      const MatchesCompanion(
+        processedAt: Value(null),
+        frameWidth: Value(null),
+        frameHeight: Value(null),
+      ),
+    );
+  }
+
   Future<void> delete(String id) async {
     await (_db.delete(_db.matches)..where((t) => t.id.equals(id))).go();
   }

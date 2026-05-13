@@ -2,11 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 import 'package:video_player/video_player.dart';
 
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/providers/documents_directory.dart';
+import '../../analysis/application/analysis_providers.dart';
 import '../../analysis/domain/ball_observation.dart';
 import '../../analysis/domain/rally.dart';
 import '../../library/application/library_providers.dart';
@@ -62,11 +64,51 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     super.dispose();
   }
 
+  Future<void> _onReprocess() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Re-process match?'),
+        content: const Text(
+          'Existing rallies, touches, and ball detections will be replaced '
+          'when the pipeline finishes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Re-process'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await ref
+        .read(analysisRepositoryProvider)
+        .resetResults(widget.matchId);
+    ref.invalidate(analysisControllerProvider(widget.matchId));
+    if (!mounted) return;
+    context.pushReplacement('/analysis/${widget.matchId}');
+  }
+
   @override
   Widget build(BuildContext context) {
     final match = ref.watch(matchByIdProvider(widget.matchId));
     return Scaffold(
-      appBar: AppBar(title: Text(match.valueOrNull?.title ?? 'Review')),
+      appBar: AppBar(
+        title: Text(match.valueOrNull?.title ?? 'Review'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Re-process',
+            onPressed: _onReprocess,
+          ),
+        ],
+      ),
       body: FutureBuilder<VideoPlayerController?>(
         future: _controllerFuture,
         builder: (context, snapshot) {
