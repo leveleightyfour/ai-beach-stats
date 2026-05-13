@@ -1,9 +1,49 @@
-# OS
-.DS_Store
-Thumbs.db
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+pubspec.lock
+
+# Generated code (committed selectively — see pubspec scripts)
+# Keep generated files out of git by default; opt-in if a file should be tracked.
+*.g.dart
+*.freezed.dart
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/Flutter/flutter_export_environment.sh
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+**/DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
 
 # Editors
 .idea/
 .vscode/
+*.iml
+*.ipr
+*.iws
 
-# Project-specific app .gitignore lives at app/.gitignore
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artefacts
+coverage/
+test/.test_coverage.dart
+
+# Generated ML model intermediates (keep .mlpackage / .mlmodel themselves)
+ios/Runner/Models/*.mlmodelc/
