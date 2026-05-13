@@ -60,7 +60,7 @@ class LibraryScreen extends ConsumerWidget {
         .read(matchImporterProvider.notifier)
         .importFromGallery();
     if (match != null && context.mounted) {
-      context.go('/analysis/${match.id}');
+      context.push('/analysis/${match.id}');
     }
   }
 }
@@ -90,7 +90,7 @@ class _MatchGrid extends StatelessWidget {
         final match = matches[index];
         return MatchTile(
           match: match,
-          onTap: () => context.go('/analysis/${match.id}'),
+          onTap: () => context.push('/analysis/${match.id}'),
         );
       },
     );

@@ -14,6 +14,13 @@ class MatchRepository {
     return query.watch().map((rows) => rows.map(_toDomain).toList());
   }
 
+  Stream<Match?> watchById(String id) {
+    final query = _db.select(_db.matches)..where((t) => t.id.equals(id));
+    return query
+        .watchSingleOrNull()
+        .map((row) => row == null ? null : _toDomain(row));
+  }
+
   Future<Match?> findById(String id) async {
     final row = await (_db.select(_db.matches)
           ..where((t) => t.id.equals(id)))

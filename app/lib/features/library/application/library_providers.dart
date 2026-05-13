@@ -15,3 +15,8 @@ MatchRepository matchRepository(MatchRepositoryRef ref) {
 Stream<List<Match>> matchesList(MatchesListRef ref) {
   return ref.watch(matchRepositoryProvider).watchAll();
 }
+
+@riverpod
+Stream<Match?> matchById(MatchByIdRef ref, String id) {
+  return ref.watch(matchRepositoryProvider).watchById(id);
+}
