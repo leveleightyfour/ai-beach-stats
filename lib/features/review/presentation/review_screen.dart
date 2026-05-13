@@ -2,9 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:video_player/video_player.dart';
 
 import '../../../core/theme/app_spacing.dart';
+import '../../../shared/providers/documents_directory.dart';
 import '../../analysis/domain/ball_observation.dart';
 import '../../analysis/domain/rally.dart';
 import '../../library/application/library_providers.dart';
@@ -42,7 +44,9 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         .read(matchRepositoryProvider)
         .findById(widget.matchId);
     if (match == null) return null;
-    final controller = VideoPlayerController.file(File(match.videoPath));
+    final docsDir = ref.read(documentsDirectoryProvider);
+    final absoluteVideoPath = p.join(docsDir, match.videoPath);
+    final controller = VideoPlayerController.file(File(absoluteVideoPath));
     await controller.initialize();
     if (!mounted) {
       await controller.dispose();

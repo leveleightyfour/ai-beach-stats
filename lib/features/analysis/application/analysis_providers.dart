@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../core/constants/pipeline_defaults.dart';
 import '../../../shared/database/app_database_provider.dart';
 import '../../../shared/ml/ml_pipeline.g.dart';
 import '../../../shared/ml/ml_pipeline_providers.dart';
+import '../../../shared/providers/documents_directory.dart';
 import '../../library/application/library_providers.dart';
 import '../data/analysis_repository.dart';
 import 'analysis_state.dart';
@@ -39,11 +41,15 @@ class AnalysisController extends _$AnalysisController {
       return AnalysisState(match: match, alreadyProcessed: true);
     }
 
-    debugPrint('[AnalysisController] starting facade session');
+    final docsDir = ref.read(documentsDirectoryProvider);
+    final absoluteVideoPath = p.join(docsDir, match.videoPath);
+    debugPrint(
+      '[AnalysisController] starting facade session videoPath=$absoluteVideoPath',
+    );
     final facade = ref.read(mlPipelineFacadeProvider);
     final session = await facade.startSession(
       matchId: match.id,
-      videoPath: match.videoPath,
+      videoPath: absoluteVideoPath,
       config: _defaultConfig(),
     );
     debugPrint(

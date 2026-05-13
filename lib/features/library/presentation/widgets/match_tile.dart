@@ -1,12 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/utils/duration_format.dart';
+import '../../../../shared/providers/documents_directory.dart';
 import '../../domain/match.dart';
 
-class MatchTile extends StatelessWidget {
+class MatchTile extends ConsumerWidget {
   const MatchTile({
     required this.match,
     required this.onTap,
@@ -17,8 +20,12 @@ class MatchTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final docsDir = ref.watch(documentsDirectoryProvider);
+    final absoluteThumbnail = match.thumbnailPath == null
+        ? null
+        : p.join(docsDir, match.thumbnailPath!);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -31,7 +38,7 @@ class MatchTile extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  _Thumbnail(path: match.thumbnailPath),
+                  _Thumbnail(path: absoluteThumbnail),
                   if (match.isProcessed)
                     const Positioned(
                       left: AppSpacing.xs,

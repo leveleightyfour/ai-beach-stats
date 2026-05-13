@@ -13,9 +13,16 @@ class Match {
 
   final String id;
   final String title;
+
+  /// Path relative to the app's documents directory. Resolve to an
+  /// absolute path via `p.join(documentsDirectoryProvider, videoPath)`
+  /// before opening the file. Stored relative so iOS container-UUID
+  /// rotations across rebuilds don't break existing rows.
   final String videoPath;
   final int durationMs;
   final DateTime importedAt;
+
+  /// Path relative to the app's documents directory; see [videoPath].
   final String? thumbnailPath;
 
   /// Non-null once the pipeline has produced a successful result for this

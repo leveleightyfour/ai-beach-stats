@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'core/theme/app_theme.dart';
 import 'shared/providers/app_router.dart';
+import 'shared/providers/documents_directory.dart';
 
-void main() {
-  runApp(const ProviderScope(child: BeachStatsApp()));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final docsDir = await getApplicationDocumentsDirectory();
+  runApp(
+    ProviderScope(
+      overrides: [
+        documentsDirectoryProvider.overrideWithValue(docsDir.path),
+      ],
+      child: const BeachStatsApp(),
+    ),
+  );
 }
 
 class BeachStatsApp extends ConsumerWidget {

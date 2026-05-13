@@ -62,23 +62,31 @@ class MatchImporter extends _$MatchImporter {
     await videosDir.create(recursive: true);
     await thumbsDir.create(recursive: true);
 
-    final videoPath = p.join(videosDir.path, '$id.mp4');
-    debugPrint('[MatchImporter] copying source -> $videoPath');
-    await source.copy(videoPath);
+    // Store paths relative to the documents directory. iOS rotates the
+    // app container UUID across rebuilds, which would break any absolute
+    // path persisted earlier.
+    final videoRelative = p.join('videos', '$id.mp4');
+    final videoAbsolute = p.join(docDir.path, videoRelative);
+    debugPrint('[MatchImporter] copying source -> $videoAbsolute');
+    await source.copy(videoAbsolute);
 
-    final durationMs = await _readDurationMs(File(videoPath));
+    final durationMs = await _readDurationMs(File(videoAbsolute));
     debugPrint('[MatchImporter] durationMs=$durationMs');
-    final thumbnailPath = await _generateThumbnail(videoPath, thumbsDir.path);
-    debugPrint('[MatchImporter] thumbnailPath=$thumbnailPath');
+    final thumbnailAbsolute =
+        await _generateThumbnail(videoAbsolute, thumbsDir.path);
+    final thumbnailRelative = thumbnailAbsolute == null
+        ? null
+        : p.relative(thumbnailAbsolute, from: docDir.path);
+    debugPrint('[MatchImporter] thumbnailRelative=$thumbnailRelative');
 
     final now = DateTime.now();
     final match = Match(
       id: id,
       title: _deriveTitle(now),
-      videoPath: videoPath,
+      videoPath: videoRelative,
       durationMs: durationMs,
       importedAt: now,
-      thumbnailPath: thumbnailPath,
+      thumbnailPath: thumbnailRelative,
     );
 
     await ref.read(matchRepositoryProvider).insert(match);
