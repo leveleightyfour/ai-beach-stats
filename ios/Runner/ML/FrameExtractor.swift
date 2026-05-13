@@ -95,11 +95,15 @@ final class FrameExtractor: FrameExtracting {
 
         var rawIndex = 0
         var emittedIndex = 0
+        var loopExitReason = "unknown"
 
         while reader.status == .reading {
             try Task.checkCancellation()
 
-            guard let sample = output.copyNextSampleBuffer() else { break }
+            guard let sample = output.copyNextSampleBuffer() else {
+                loopExitReason = "copyNextSampleBuffer returned nil"
+                break
+            }
 
             defer { CMSampleBufferInvalidate(sample) }
 
@@ -116,6 +120,10 @@ final class FrameExtractor: FrameExtracting {
             }
             rawIndex += 1
         }
+        if loopExitReason == "unknown" {
+            loopExitReason = "reader.status != .reading (status=\(reader.status.rawValue))"
+        }
+        print("[FrameExtractor] loop ended raw=\(rawIndex) emitted=\(emittedIndex) reason=\(loopExitReason) finalStatus=\(reader.status.rawValue) error=\(String(describing: reader.error))")
 
         switch reader.status {
         case .failed:
