@@ -33,7 +33,9 @@ final class FrameExtractor: FrameExtracting {
         from videoURL: URL,
         config: PipelineRuntimeConfig
     ) -> AsyncThrowingStream<PipelineFrame, Error> {
-        AsyncThrowingStream { continuation in
+        // Bound the buffer so the decoder doesn't run ahead of the downstream
+        // detector and pile up pixel buffers in memory.
+        AsyncThrowingStream(bufferingPolicy: .bufferingOldest(2)) { continuation in
             let task = Task.detached(priority: .userInitiated) {
                 do {
                     try await self.run(

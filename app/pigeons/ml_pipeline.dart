@@ -60,6 +60,7 @@ class PipelineProgress {
     required this.fractionComplete,
     required this.framesProcessed,
     required this.totalFrames,
+    required this.ballDetectionsSoFar,
     this.previewThumbnailPath,
   });
 
@@ -69,6 +70,11 @@ class PipelineProgress {
   final double fractionComplete;
   final int framesProcessed;
   final int totalFrames;
+
+  /// Running count of frames in which the ball was detected with
+  /// confidence above the configured threshold. Zero when the
+  /// detection model is unavailable.
+  final int ballDetectionsSoFar;
 
   /// Absolute path to a debug preview thumbnail (typically the first frame).
   /// Populated once, early in the run.
@@ -134,12 +140,17 @@ class PipelineResult {
     required this.matchId,
     required this.rallies,
     required this.totalFramesProcessed,
+    required this.totalBallDetections,
     required this.totalDurationMs,
   });
 
   final String matchId;
   final List<RallyResult> rallies;
   final int totalFramesProcessed;
+
+  /// Total frames in which the ball was detected with confidence above
+  /// the configured threshold. Independent of rally segmentation.
+  final int totalBallDetections;
   final int totalDurationMs;
 }
 

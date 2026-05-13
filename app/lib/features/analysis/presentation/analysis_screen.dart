@@ -114,6 +114,10 @@ class _ProgressBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final p = progress;
+    final mutedStyle = theme.textTheme.bodyLarge?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -128,11 +132,15 @@ class _ProgressBlock extends StatelessWidget {
           p == null
               ? 'Starting…'
               : '${p.framesProcessed} / ${p.totalFrames} frames',
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
+          style: mutedStyle,
         ),
+        if (p != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            '${p.ballDetectionsSoFar} ball detections',
+            style: mutedStyle,
+          ),
+        ],
         const SizedBox(height: AppSpacing.s),
         LinearProgressIndicator(
           value: p == null || p.totalFrames == 0
@@ -164,6 +172,10 @@ class _ResultBlock extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.s),
         _Stat(label: 'Frames processed', value: '${result.totalFramesProcessed}'),
+        _Stat(
+          label: 'Ball detections',
+          value: '${result.totalBallDetections}',
+        ),
         _Stat(
           label: 'Pipeline duration',
           value: formatDurationMs(result.totalDurationMs),

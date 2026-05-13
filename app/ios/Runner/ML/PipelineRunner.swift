@@ -63,6 +63,7 @@ final class PipelineRunner: PipelineOrchestrating {
                 )) ?? 0
 
                 var framesProcessed: Int64 = 0
+                var ballDetections: Int64 = 0
                 var previewPath: String? = nil
 
                 do {
@@ -82,15 +83,20 @@ final class PipelineRunner: PipelineOrchestrating {
                             )
                         }
 
+                        if let _ = try? await self.ballDetector.detect(in: frame) {
+                            ballDetections += 1
+                        }
+
                         if frame.frameIndex == 0 ||
                             Int(framesProcessed) % Self.progressEveryNFrames == 0 {
                             let progress = PipelineProgress(
-                                stage: .extractingFrames,
+                                stage: .detectingBall,
                                 fractionComplete: totalFrames > 0
                                     ? min(1.0, Double(framesProcessed) / Double(totalFrames))
                                     : 0.0,
                                 framesProcessed: framesProcessed,
                                 totalFrames: Int64(totalFrames),
+                                ballDetectionsSoFar: ballDetections,
                                 previewThumbnailPath: previewPath
                             )
                             continuation.yield(
@@ -110,6 +116,7 @@ final class PipelineRunner: PipelineOrchestrating {
                         matchId: matchId,
                         rallies: [],
                         totalFramesProcessed: framesProcessed,
+                        totalBallDetections: ballDetections,
                         totalDurationMs: elapsed
                     )
                     continuation.yield(

@@ -23,19 +23,23 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
     )
     private var sessions: [String: Task<Void, Never>] = [:]
     private var eventListener: MLPipelineEventListener?
-    private let runnerFactory: () -> PipelineOrchestrating
+    private let runnerFactory: (PipelineRuntimeConfig) -> PipelineOrchestrating
 
     init(
-        runnerFactory: @escaping () -> PipelineOrchestrating =
+        runnerFactory: @escaping (PipelineRuntimeConfig) -> PipelineOrchestrating =
             MLPipelineCoordinator.defaultRunnerFactory
     ) {
         self.runnerFactory = runnerFactory
     }
 
-    static func defaultRunnerFactory() -> PipelineOrchestrating {
+    static func defaultRunnerFactory(
+        config: PipelineRuntimeConfig
+    ) -> PipelineOrchestrating {
         PipelineRunner(
             frameExtractor: FrameExtractor(),
-            ballDetector: BallDetector(confidenceThreshold: 0.35),
+            ballDetector: BallDetector(
+                confidenceThreshold: config.detectionConfidenceThreshold
+            ),
             poseDetector: PoseDetector(),
             playerTracker: PlayerTracker(),
             rallySegmenter: RallySegmenter(),
@@ -73,7 +77,7 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
             detectionConfidenceThreshold: config.detectionConfidenceThreshold
         )
 
-        let runner = runnerFactory()
+        let runner = runnerFactory(runtimeConfig)
         let task = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             let stream = runner.run(
