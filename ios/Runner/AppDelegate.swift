@@ -10,18 +10,21 @@ import UIKit
         print("[AppDelegate] didFinishLaunchingWithOptions start")
         GeneratedPluginRegistrant.register(with: self)
 
-        // super sets up window + rootViewController. Must run BEFORE we
-        // can grab the binaryMessenger.
         let result = super.application(
             application,
             didFinishLaunchingWithOptions: launchOptions
         )
 
-        if let controller = window?.rootViewController as? FlutterViewController {
-            print("[AppDelegate] FlutterViewController obtained; registering MLPipelineCoordinator")
-            MLPipelineCoordinator.register(with: controller.binaryMessenger)
+        // Use the FlutterAppDelegate's plugin registrar rather than reaching
+        // through window?.rootViewController. In recent Flutter + iOS scene
+        // lifecycles, the rootViewController is a plain UIViewController at
+        // this point; the FlutterViewController is installed later. The
+        // registrar bypasses that and goes via the FlutterEngine directly.
+        if let registrar = self.registrar(forPlugin: "MLPipelineCoordinator") {
+            print("[AppDelegate] Got plugin registrar; registering MLPipelineCoordinator")
+            MLPipelineCoordinator.register(with: registrar.messenger())
         } else {
-            print("[AppDelegate] ERROR: rootViewController is not a FlutterViewController (type=\(String(describing: type(of: window?.rootViewController)))). MLPipeline not registered.")
+            print("[AppDelegate] ERROR: registrar(forPlugin:) returned nil — MLPipeline not registered")
         }
 
         print("[AppDelegate] didFinishLaunchingWithOptions done (result=\(result))")
