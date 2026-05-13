@@ -2,16 +2,24 @@ import AVFoundation
 import CoreMedia
 import Foundation
 
-/// Reads a video file from disk and emits sampled frames at the requested rate.
+/// Reads a video file from disk and invokes a callback for each sampled frame.
 ///
-/// Stage 1 of the pipeline. Uses `AVAssetReader` against the first video
-/// track of the asset. Frames are decoded as BGRA pixel buffers and
-/// down-sampled to roughly `config.frameRateHz`.
+/// Stage 1 of the pipeline. Push-based with implicit back-pressure: the
+/// extractor awaits the callback before pulling the next sample, so the
+/// decoder never races ahead of downstream ML inference. (An earlier
+/// AsyncStream version with `.bufferingOldest(2)` silently dropped frames
+/// once detection slowed the consumer — that policy DROPS, it doesn't
+/// back-pressure. The streaming abstraction was the wrong shape for this
+/// pipeline.)
 protocol FrameExtracting {
+    /// Decodes the first video track of [videoURL] and invokes [onFrame]
+    /// for each frame after stride sub-sampling. The call returns when the
+    /// stream is exhausted or [onFrame] throws.
     func extractFrames(
         from videoURL: URL,
-        config: PipelineRuntimeConfig
-    ) -> AsyncThrowingStream<PipelineFrame, Error>
+        config: PipelineRuntimeConfig,
+        onFrame: (PipelineFrame) async throws -> Void
+    ) async throws
 }
 
 enum FrameExtractorError: LocalizedError {
@@ -31,30 +39,8 @@ enum FrameExtractorError: LocalizedError {
 final class FrameExtractor: FrameExtracting {
     func extractFrames(
         from videoURL: URL,
-        config: PipelineRuntimeConfig
-    ) -> AsyncThrowingStream<PipelineFrame, Error> {
-        // Bound the buffer so the decoder doesn't run ahead of the downstream
-        // detector and pile up pixel buffers in memory.
-        AsyncThrowingStream(bufferingPolicy: .bufferingOldest(2)) { continuation in
-            let task = Task.detached(priority: .userInitiated) {
-                do {
-                    try await self.run(
-                        videoURL: videoURL,
-                        config: config,
-                        continuation: continuation
-                    )
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
-    }
-
-    private func run(
-        videoURL: URL,
         config: PipelineRuntimeConfig,
-        continuation: AsyncThrowingStream<PipelineFrame, Error>.Continuation
+        onFrame: (PipelineFrame) async throws -> Void
     ) async throws {
         let fm = FileManager.default
         let exists = fm.fileExists(atPath: videoURL.path)
@@ -105,18 +91,22 @@ final class FrameExtractor: FrameExtracting {
                 break
             }
 
-            defer { CMSampleBufferInvalidate(sample) }
-
             if rawIndex % stride == 0,
                let pixelBuffer = CMSampleBufferGetImageBuffer(sample) {
                 let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                // Release the AVAssetReader pool slot ASAP. The
+                // CVPixelBuffer is independently retained by the `let`.
+                CMSampleBufferInvalidate(sample)
+
                 let frame = PipelineFrame(
                     pixelBuffer: pixelBuffer,
                     presentationTime: pts,
                     frameIndex: emittedIndex
                 )
-                continuation.yield(frame)
+                try await onFrame(frame)
                 emittedIndex += 1
+            } else {
+                CMSampleBufferInvalidate(sample)
             }
             rawIndex += 1
         }
@@ -131,7 +121,7 @@ final class FrameExtractor: FrameExtracting {
         case .cancelled:
             throw CancellationError()
         default:
-            continuation.finish()
+            return
         }
     }
 }

@@ -73,10 +73,10 @@ final class PipelineRunner: PipelineOrchestrating {
                 do {
                     try Task.checkCancellation()
 
-                    for try await frame in self.frameExtractor.extractFrames(
+                    try await self.frameExtractor.extractFrames(
                         from: videoURL,
                         config: config
-                    ) {
+                    ) { frame in
                         try Task.checkCancellation()
                         framesProcessed += 1
 
