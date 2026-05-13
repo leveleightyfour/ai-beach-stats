@@ -43,9 +43,14 @@ class MatchImporter extends _$MatchImporter {
   }
 
   Future<Match?> _runImport() async {
+    debugPrint('[MatchImporter] launching picker');
     final picker = ImagePicker();
     final picked = await picker.pickVideo(source: ImageSource.gallery);
-    if (picked == null) return null;
+    if (picked == null) {
+      debugPrint('[MatchImporter] picker cancelled');
+      return null;
+    }
+    debugPrint('[MatchImporter] picked path=${picked.path}');
     return _persistVideoFile(File(picked.path));
   }
 
@@ -58,10 +63,13 @@ class MatchImporter extends _$MatchImporter {
     await thumbsDir.create(recursive: true);
 
     final videoPath = p.join(videosDir.path, '$id.mp4');
+    debugPrint('[MatchImporter] copying source -> $videoPath');
     await source.copy(videoPath);
 
     final durationMs = await _readDurationMs(File(videoPath));
+    debugPrint('[MatchImporter] durationMs=$durationMs');
     final thumbnailPath = await _generateThumbnail(videoPath, thumbsDir.path);
+    debugPrint('[MatchImporter] thumbnailPath=$thumbnailPath');
 
     final now = DateTime.now();
     final match = Match(
@@ -74,6 +82,7 @@ class MatchImporter extends _$MatchImporter {
     );
 
     await ref.read(matchRepositoryProvider).insert(match);
+    debugPrint('[MatchImporter] inserted match id=$id');
     return match;
   }
 

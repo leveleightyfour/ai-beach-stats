@@ -27,34 +27,50 @@ class AnalysisController extends _$AnalysisController {
 
   @override
   Future<AnalysisState> build(String matchId) async {
+    debugPrint('[AnalysisController] build matchId=$matchId');
     final match = await ref.read(matchRepositoryProvider).findById(matchId);
     if (match == null) {
+      debugPrint('[AnalysisController] match not found: $matchId');
       throw StateError('Match not found: $matchId');
     }
 
     if (match.isProcessed) {
-      // Pipeline already ran for this match — don't re-run.
+      debugPrint('[AnalysisController] match already processed; short-circuit');
       return AnalysisState(match: match, alreadyProcessed: true);
     }
 
+    debugPrint('[AnalysisController] starting facade session');
     final facade = ref.read(mlPipelineFacadeProvider);
     final session = await facade.startSession(
       matchId: match.id,
       videoPath: match.videoPath,
       config: _defaultConfig(),
     );
+    debugPrint(
+      '[AnalysisController] session started sessionId=${session.sessionId}',
+    );
 
     _subscription = session.events.listen((event) {
+      debugPrint(
+        '[AnalysisController] event type=${event.type} '
+        'frames=${event.progress?.framesProcessed} '
+        'balls=${event.progress?.ballDetectionsSoFar}',
+      );
       final current = state.valueOrNull;
       if (current == null) return;
       final next = current.applying(event);
       state = AsyncData(next);
       if (event.type == PipelineEventType.completion && event.result != null) {
+        debugPrint(
+          '[AnalysisController] completion: rallies=${event.result!.rallies.length} '
+          'observations=${event.result!.ballObservations.length}',
+        );
         _persist(event.result!);
       }
     });
 
     ref.onDispose(() async {
+      debugPrint('[AnalysisController] dispose');
       await _subscription?.cancel();
       _subscription = null;
       await session.cancel();
@@ -64,12 +80,14 @@ class AnalysisController extends _$AnalysisController {
   }
 
   Future<void> _persist(PipelineResult result) async {
+    debugPrint(
+      '[AnalysisController] persisting result for matchId=${result.matchId}',
+    );
     try {
       await ref.read(analysisRepositoryProvider).persistResult(result);
+      debugPrint('[AnalysisController] persist succeeded');
     } catch (error, stackTrace) {
-      if (kDebugMode) {
-        debugPrint('Failed to persist pipeline result: $error\n$stackTrace');
-      }
+      debugPrint('[AnalysisController] persist failed: $error\n$stackTrace');
     }
   }
 

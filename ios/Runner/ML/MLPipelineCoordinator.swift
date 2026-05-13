@@ -50,6 +50,7 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
     /// Wires the coordinator into the Flutter engine. Call once during
     /// app launch with the FlutterViewController's binaryMessenger.
     static func register(with binaryMessenger: FlutterBinaryMessenger) {
+        NSLog("[MLPipelineCoordinator] register(with:) called")
         MLPipelineHostApiSetup.setUp(
             binaryMessenger: binaryMessenger,
             api: shared
@@ -57,6 +58,7 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
         shared.eventListener = MLPipelineEventListener(
             binaryMessenger: binaryMessenger
         )
+        NSLog("[MLPipelineCoordinator] HostApi setUp complete + event listener constructed")
     }
 
     // MARK: - MLPipelineHostApi
@@ -68,6 +70,12 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
         config: PipelineConfig,
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
+        NSLog(
+            "[MLPipelineCoordinator] startProcessing sessionId=%@ matchId=%@ videoPath=%@",
+            sessionId,
+            matchId,
+            videoPath
+        )
         let videoURL = URL(fileURLWithPath: videoPath)
         let runtimeConfig = PipelineRuntimeConfig(
             frameRateHz: Int(config.frameRateHz),
@@ -80,6 +88,7 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
         let runner = runnerFactory(runtimeConfig)
         let task = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
+            NSLog("[MLPipelineCoordinator] session task started sessionId=%@", sessionId)
             let stream = runner.run(
                 sessionId: sessionId,
                 matchId: matchId,
@@ -92,12 +101,15 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
             self.sessionsQueue.sync {
                 _ = self.sessions.removeValue(forKey: sessionId)
             }
+            NSLog("[MLPipelineCoordinator] session task ended sessionId=%@", sessionId)
         }
         sessionsQueue.sync { sessions[sessionId] = task }
         completion(.success(()))
+        NSLog("[MLPipelineCoordinator] startProcessing acked sessionId=%@", sessionId)
     }
 
     func cancel(sessionId: String) throws {
+        NSLog("[MLPipelineCoordinator] cancel sessionId=%@", sessionId)
         sessionsQueue.sync {
             sessions[sessionId]?.cancel()
             sessions.removeValue(forKey: sessionId)
@@ -107,11 +119,24 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
     // MARK: - Event dispatch
 
     private func dispatch(event: PipelineEvent) {
+        NSLog(
+            "[MLPipelineCoordinator] dispatch event session=%@ type=%@",
+            event.sessionId,
+            String(describing: event.type)
+        )
         // Pigeon Flutter API calls must originate on the platform thread.
         let listener = self.eventListener
         DispatchQueue.main.async {
-            listener?.onPipelineEvent(event: event) { _ in
-                // Acknowledge ignored; Dart-side handler is fire-and-forget.
+            if listener == nil {
+                NSLog("[MLPipelineCoordinator] WARNING: eventListener is nil; event dropped")
+            }
+            listener?.onPipelineEvent(event: event) { result in
+                if case .failure(let error) = result {
+                    NSLog(
+                        "[MLPipelineCoordinator] onPipelineEvent failed: %@",
+                        String(describing: error)
+                    )
+                }
             }
         }
     }

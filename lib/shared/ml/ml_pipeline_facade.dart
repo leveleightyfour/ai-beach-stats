@@ -5,6 +5,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import 'ml_pipeline.g.dart';
@@ -32,7 +33,9 @@ class MLPipelineFacade {
     Uuid? uuid,
   })  : _hostApi = hostApi ?? MLPipelineHostApi(),
         _uuid = uuid ?? const Uuid() {
+    debugPrint('[MLPipelineFacade] constructor: registering event listener');
     MLPipelineEventListener.setUp(_FacadeListener(_routeEvent));
+    debugPrint('[MLPipelineFacade] event listener registered');
   }
 
   final MLPipelineHostApi _hostApi;
@@ -45,12 +48,21 @@ class MLPipelineFacade {
     required PipelineConfig config,
   }) async {
     final sessionId = _uuid.v4();
+    debugPrint(
+      '[MLPipelineFacade] startSession sessionId=$sessionId matchId=$matchId '
+      'videoPath=$videoPath',
+    );
     final controller = StreamController<PipelineEvent>.broadcast();
     _controllers[sessionId] = controller;
 
     try {
+      debugPrint('[MLPipelineFacade] calling _hostApi.startProcessing');
       await _hostApi.startProcessing(sessionId, matchId, videoPath, config);
-    } catch (error) {
+      debugPrint('[MLPipelineFacade] startProcessing returned');
+    } catch (error, stackTrace) {
+      debugPrint(
+        '[MLPipelineFacade] startProcessing threw: $error\n$stackTrace',
+      );
       _controllers.remove(sessionId);
       await controller.close();
       rethrow;
@@ -64,18 +76,36 @@ class MLPipelineFacade {
   }
 
   Future<void> _teardown(String sessionId) async {
+    debugPrint('[MLPipelineFacade] teardown sessionId=$sessionId');
     final controller = _controllers.remove(sessionId);
-    if (controller == null) return;
+    if (controller == null) {
+      debugPrint(
+        '[MLPipelineFacade] teardown: no controller for sessionId=$sessionId',
+      );
+      return;
+    }
     try {
       await _hostApi.cancel(sessionId);
+    } catch (error) {
+      debugPrint('[MLPipelineFacade] cancel threw: $error');
     } finally {
       await controller.close();
     }
   }
 
   void _routeEvent(PipelineEvent event) {
+    debugPrint(
+      '[MLPipelineFacade] route event session=${event.sessionId} '
+      'type=${event.type}',
+    );
     final controller = _controllers[event.sessionId];
-    if (controller == null || controller.isClosed) return;
+    if (controller == null || controller.isClosed) {
+      debugPrint(
+        '[MLPipelineFacade] route event: no/closed controller for '
+        'sessionId=${event.sessionId}',
+      );
+      return;
+    }
     controller.add(event);
     if (event.type == PipelineEventType.completion ||
         event.type == PipelineEventType.error ||
