@@ -182,19 +182,27 @@ class _ReviewBody extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AspectRatio(
-            aspectRatio: controller.value.aspectRatio,
-            child: Stack(
-              children: [
-                VideoPlayer(controller),
-                Positioned.fill(
-                  child: _BallOverlay(
-                    controller: controller,
-                    observations: observationsAsync.valueOrNull ??
-                        const <BallObservation>[],
+          Expanded(
+            flex: 3,
+            child: ColoredBox(
+              color: Colors.black,
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: controller.value.aspectRatio,
+                  child: Stack(
+                    children: [
+                      VideoPlayer(controller),
+                      Positioned.fill(
+                        child: _BallOverlay(
+                          controller: controller,
+                          observations: observationsAsync.valueOrNull ??
+                              const <BallObservation>[],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
           VideoControls(controller: controller),
@@ -206,6 +214,7 @@ class _ReviewBody extends ConsumerWidget {
           if (ralliesAsync.valueOrNull != null)
             MatchTouchSummary(rallies: ralliesAsync.value!),
           Expanded(
+            flex: 2,
             child: ralliesAsync.when(
               skipLoadingOnReload: true,
               data: (rallies) => RallyTimeline(
