@@ -23,6 +23,7 @@ final class PipelineRunner: PipelineOrchestrating {
     init(
         frameExtractor: FrameExtracting,
         ballDetector: BallDetecting,
+        ballTracker: BallTracking,
         poseDetector: PoseDetecting,
         playerTracker: PlayerTracking,
         rallySegmenter: RallySegmenting,
@@ -31,6 +32,7 @@ final class PipelineRunner: PipelineOrchestrating {
     ) {
         self.frameExtractor = frameExtractor
         self.ballDetector = ballDetector
+        self.ballTracker = ballTracker
         self.poseDetector = poseDetector
         self.playerTracker = playerTracker
         self.rallySegmenter = rallySegmenter
@@ -40,6 +42,7 @@ final class PipelineRunner: PipelineOrchestrating {
 
     private let frameExtractor: FrameExtracting
     private let ballDetector: BallDetecting
+    private let ballTracker: BallTracking
     private let poseDetector: PoseDetecting
     private let playerTracker: PlayerTracking
     private let rallySegmenter: RallySegmenting
@@ -70,6 +73,10 @@ final class PipelineRunner: PipelineOrchestrating {
                 var frameHeight: Int64 = 0
                 var previewPath: String? = nil
 
+                // Reset the tracker between pipeline runs so re-process
+                // starts clean rather than picking up a stale session.
+                self.ballTracker.endSession()
+
                 do {
                     try Task.checkCancellation()
 
@@ -89,7 +96,26 @@ final class PipelineRunner: PipelineOrchestrating {
                             frameHeight = Int64(CVPixelBufferGetHeight(frame.pixelBuffer))
                         }
 
-                        if let detection = try? await self.ballDetector.detect(in: frame) {
+                        // Try the tracker first if it has a live session.
+                        // Falling back to the detector when the tracker loses
+                        // the ball lets us reacquire mid-rally.
+                        var detection: BallDetection?
+                        if self.ballTracker.isSessionActive {
+                            detection = try? await self.ballTracker.predict(in: frame)
+                        }
+                        if detection == nil {
+                            if let detected = try? await self.ballDetector.detect(in: frame) {
+                                detection = detected
+                                if self.ballTracker.isAvailable {
+                                    self.ballTracker.startSession(
+                                        initialFrame: frame,
+                                        initialDetection: detected
+                                    )
+                                }
+                            }
+                        }
+
+                        if let detection {
                             ballDetectionsCount += 1
                             detections.append(detection)
 

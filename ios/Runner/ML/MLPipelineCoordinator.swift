@@ -40,6 +40,7 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
             ballDetector: BallDetector(
                 confidenceThreshold: config.detectionConfidenceThreshold
             ),
+            ballTracker: VisionBallTracker(),
             poseDetector: PoseDetector(),
             playerTracker: PlayerTracker(),
             rallySegmenter: RallySegmenter(),
