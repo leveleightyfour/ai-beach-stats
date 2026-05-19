@@ -27,26 +27,26 @@ import Foundation
 ///
 /// ## Sourcing the models
 ///
-/// Apple publishes CoreML ports of SAM 2 on Hugging Face. The current
-/// defaults match the "Large FLOAT16" variant filenames:
+/// Apple publishes CoreML ports of SAM 2 on Hugging Face. Current
+/// defaults are the Tiny FLOAT16 variant filenames:
 ///
-///   - `SAM2LargeImageEncoderFLOAT16.mlpackage`
-///   - `SAM2LargePromptEncoderFLOAT16.mlpackage`
-///   - `SAM2LargeMaskDecoderFLOAT16.mlpackage`
+///   - `SAM2TinyImageEncoderFLOAT16.mlpackage`
+///   - `SAM2TinyPromptEncoderFLOAT16.mlpackage`
+///   - `SAM2TinyMaskDecoderFLOAT16.mlpackage`
 ///
 /// Drop all three into `ios/Runner/Models/` and add each to the Runner
 /// target in Xcode (Action: Reference files in place, ✅ Runner target).
-/// For the Tiny variant, change the names passed to `init` (or rename
-/// the files to match the defaults).
+/// To use Small / Base+ / Large variants, change the names passed to
+/// `init` (or rename the files to match the defaults).
 ///
-/// Performance heads-up for Large on iPad M4 — image encoder pass is
-/// roughly 300-500ms. A 145s clip at 15Hz target = ~2,400 frames =
-/// 12-20 minutes wall-clock. Tiny is ~10x faster.
+/// Performance heads-up: Tiny image encoder runs at ~30-80ms per frame
+/// on iPad M4, so the 145s test clip at 15Hz sampling = ~2,400 frames =
+/// ~1-2 minutes processing. Larger variants ramp to 10× that.
 final class SAM2BallTracker: BallTracking {
     init(
-        imageEncoderName: String = "SAM2LargeImageEncoderFLOAT16",
-        promptEncoderName: String = "SAM2LargePromptEncoderFLOAT16",
-        maskDecoderName: String = "SAM2LargeMaskDecoderFLOAT16",
+        imageEncoderName: String = "SAM2TinyImageEncoderFLOAT16",
+        promptEncoderName: String = "SAM2TinyPromptEncoderFLOAT16",
+        maskDecoderName: String = "SAM2TinyMaskDecoderFLOAT16",
         maxSessionFrames: Int = 60
     ) {
         self.imageEncoderName = imageEncoderName
