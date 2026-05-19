@@ -1,3 +1,4 @@
+import CoreImage
 import CoreMedia
 import CoreML
 import Foundation
@@ -68,6 +69,13 @@ final class SAM2BallTracker: BallTracking {
     private var sessionActive = false
     private var sessionFrameCount = 0
     private var lastBoundingBox: CGRect?
+    private let ciContext = CIContext()
+
+    private static let inputSide = 1024
+    private static let maskSide = 256
+    private static let minScore: Float = 0.5
+    private static let minBboxSide: CGFloat = 5
+    private static let maxBboxSide: CGFloat = 200
 
     var isAvailable: Bool {
         loadModelsIfNeeded()
@@ -90,10 +98,10 @@ final class SAM2BallTracker: BallTracking {
     }
 
     func predict(in frame: PipelineFrame) async throws -> BallDetection? {
-        guard sessionActive, lastBoundingBox != nil else { return nil }
-        guard imageEncoder != nil,
-              promptEncoder != nil,
-              maskDecoder != nil
+        guard sessionActive, let lastBbox = lastBoundingBox else { return nil }
+        guard let encoder = imageEncoder,
+              let prompter = promptEncoder,
+              let decoder = maskDecoder
         else {
             endSession()
             return nil
@@ -105,24 +113,201 @@ final class SAM2BallTracker: BallTracking {
             return nil
         }
 
-        // TODO(commit 2): orchestrate the inference chain:
-        //
-        //   1. Image encoder: feed frame.pixelBuffer (resized/normalised
-        //      to the encoder's expected input — typically 1024x1024)
-        //      and read the feature-map outputs.
-        //   2. Prompt encoder: feed the centre of lastBoundingBox as a
-        //      point prompt (or the bbox itself as a box prompt — TBD
-        //      once we see the prompt-encoder input schema).
-        //   3. Mask decoder: combine encoder features + prompt
-        //      embeddings, read mask + score.
-        //   4. If score below threshold or mask empty/improbably-sized,
-        //      end session and return nil.
-        //   5. Else compute bbox of mask, update lastBoundingBox,
-        //      return BallDetection.
+        do {
+            // --- 1. Letterbox source frame to 1024x1024 ---
+            let srcW = CGFloat(CVPixelBufferGetWidth(frame.pixelBuffer))
+            let srcH = CGFloat(CVPixelBufferGetHeight(frame.pixelBuffer))
+            let side = CGFloat(Self.inputSide)
+            let scale = side / max(srcW, srcH)
+            let scaledW = srcW * scale
+            let scaledH = srcH * scale
+            let padX = (side - scaledW) / 2
+            let padY = (side - scaledH) / 2
 
-        print("[SAM2BallTracker] predict() not yet implemented; ending session at frame \(frame.frameIndex)")
-        endSession()
-        return nil
+            guard let resized = letterboxToSquare(
+                source: frame.pixelBuffer,
+                scale: scale,
+                padX: padX,
+                padY: padY
+            ) else {
+                endSession()
+                return nil
+            }
+
+            // --- 2. Image encoder ---
+            let encOut = try encoder.prediction(
+                from: try MLDictionaryFeatureProvider(dictionary: [
+                    "image": MLFeatureValue(pixelBuffer: resized),
+                ])
+            )
+            guard
+                let imgEmbed = encOut.featureValue(for: "image_embedding")?.multiArrayValue,
+                let featsS0 = encOut.featureValue(for: "feats_s0")?.multiArrayValue,
+                let featsS1 = encOut.featureValue(for: "feats_s1")?.multiArrayValue
+            else {
+                endSession()
+                return nil
+            }
+
+            // --- 3. Prompt encoder: bbox centre as positive point ---
+            // Apple's port takes point coordinates in pixel space of the
+            // 1024x1024 input (not normalised). Map the prior bbox centre
+            // from source pixels into that space via the letterbox transform.
+            let inputX = Float(lastBbox.midX * scale + padX)
+            let inputY = Float(lastBbox.midY * scale + padY)
+
+            let points = try MLMultiArray(shape: [1, 1, 2], dataType: .float16)
+            points[[0, 0, 0] as [NSNumber]] = NSNumber(value: inputX)
+            points[[0, 0, 1] as [NSNumber]] = NSNumber(value: inputY)
+            let labels = try MLMultiArray(shape: [1, 1], dataType: .float16)
+            labels[[0, 0] as [NSNumber]] = NSNumber(value: Float(1))
+
+            let promptOut = try prompter.prediction(
+                from: try MLDictionaryFeatureProvider(dictionary: [
+                    "points": MLFeatureValue(multiArray: points),
+                    "labels": MLFeatureValue(multiArray: labels),
+                ])
+            )
+            guard
+                let sparse = promptOut.featureValue(for: "sparse_embeddings")?.multiArrayValue,
+                let dense = promptOut.featureValue(for: "dense_embeddings")?.multiArrayValue
+            else {
+                endSession()
+                return nil
+            }
+
+            // --- 4. Mask decoder ---
+            let decOut = try decoder.prediction(
+                from: try MLDictionaryFeatureProvider(dictionary: [
+                    "feats_s0": MLFeatureValue(multiArray: featsS0),
+                    "feats_s1": MLFeatureValue(multiArray: featsS1),
+                    "image_embedding": MLFeatureValue(multiArray: imgEmbed),
+                    "sparse_embedding": MLFeatureValue(multiArray: sparse),
+                    "dense_embedding": MLFeatureValue(multiArray: dense),
+                ])
+            )
+            guard
+                let masks = decOut.featureValue(for: "low_res_masks")?.multiArrayValue,
+                let scores = decOut.featureValue(for: "scores")?.multiArrayValue
+            else {
+                endSession()
+                return nil
+            }
+
+            // --- 5. Pick best mask candidate ---
+            var bestScore: Float = -.infinity
+            var bestIdx = 0
+            for i in 0..<3 {
+                let s = scores[[0, i] as [NSNumber]].floatValue
+                if s > bestScore {
+                    bestScore = s
+                    bestIdx = i
+                }
+            }
+            if bestScore < Self.minScore {
+                if sessionFrameCount == 0 {
+                    print("[SAM2BallTracker] no confident mask (score=\(bestScore)) on first predict; ending")
+                }
+                endSession()
+                return nil
+            }
+
+            // --- 6. Bbox of the selected mask (logits > 0 = foreground) ---
+            var minX = Int.max
+            var minY = Int.max
+            var maxX = -1
+            var maxY = -1
+            var pixelCount = 0
+            for my in 0..<Self.maskSide {
+                for mx in 0..<Self.maskSide {
+                    let val = masks[[0, bestIdx, my, mx] as [NSNumber]].floatValue
+                    if val > 0 {
+                        if mx < minX { minX = mx }
+                        if my < minY { minY = my }
+                        if mx > maxX { maxX = mx }
+                        if my > maxY { maxY = my }
+                        pixelCount += 1
+                    }
+                }
+            }
+            guard pixelCount > 0 else {
+                endSession()
+                return nil
+            }
+
+            // --- 7. Mask coords (256x256) -> 1024 input space -> source pixels ---
+            let maskScale = side / CGFloat(Self.maskSide)
+            let x1Src = (CGFloat(minX) * maskScale - padX) / scale
+            let y1Src = (CGFloat(minY) * maskScale - padY) / scale
+            let x2Src = (CGFloat(maxX + 1) * maskScale - padX) / scale
+            let y2Src = (CGFloat(maxY + 1) * maskScale - padY) / scale
+            let newBbox = CGRect(
+                x: x1Src,
+                y: y1Src,
+                width: x2Src - x1Src,
+                height: y2Src - y1Src
+            )
+
+            // --- 8. Plausibility checks ---
+            if newBbox.width < Self.minBboxSide
+                || newBbox.height < Self.minBboxSide
+                || newBbox.width > Self.maxBboxSide
+                || newBbox.height > Self.maxBboxSide
+            {
+                endSession()
+                return nil
+            }
+
+            lastBoundingBox = newBbox
+            sessionFrameCount += 1
+
+            let timestampMs = Int(
+                CMTimeGetSeconds(frame.presentationTime) * 1000
+            )
+            return BallDetection(
+                frameIndex: frame.frameIndex,
+                timestampMs: timestampMs,
+                boundingBox: newBbox,
+                confidence: Double(bestScore)
+            )
+        } catch {
+            print("[SAM2BallTracker] inference error at frame \(frame.frameIndex): \(error)")
+            endSession()
+            return nil
+        }
+    }
+
+    /// Scale + letterbox the source pixel buffer to a 1024x1024 BGRA buffer
+    /// suitable as input to the SAM 2 image encoder.
+    private func letterboxToSquare(
+        source: CVPixelBuffer,
+        scale: CGFloat,
+        padX: CGFloat,
+        padY: CGFloat
+    ) -> CVPixelBuffer? {
+        let side = Self.inputSide
+        var output: CVPixelBuffer?
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
+        ]
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            side,
+            side,
+            kCVPixelFormatType_32BGRA,
+            attrs as CFDictionary,
+            &output
+        )
+        guard status == kCVReturnSuccess, let dest = output else { return nil }
+
+        var image = CIImage(cvPixelBuffer: source)
+            .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            .transformed(by: CGAffineTransform(translationX: padX, y: padY))
+        let canvas = CIImage(color: .black)
+            .cropped(to: CGRect(x: 0, y: 0, width: side, height: side))
+        image = image.composited(over: canvas)
+        ciContext.render(image, to: dest)
+        return dest
     }
 
     func endSession() {
