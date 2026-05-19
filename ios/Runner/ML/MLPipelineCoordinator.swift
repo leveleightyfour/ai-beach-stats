@@ -40,12 +40,25 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
             ballDetector: BallDetector(
                 confidenceThreshold: config.detectionConfidenceThreshold
             ),
-            ballTracker: VisionBallTracker(),
+            ballTracker: pickBallTracker(),
             poseDetector: PoseDetector(),
             playerTracker: PlayerTracker(),
             rallySegmenter: RallySegmenter(),
             touchAttributor: TouchAttributor()
         )
+    }
+
+    /// Prefer the SAM 2 tracker when its `.mlpackage` files are bundled;
+    /// fall back to the Vision correlation tracker otherwise. Logged once
+    /// per pipeline factory invocation.
+    private static func pickBallTracker() -> BallTracking {
+        let sam2 = SAM2BallTracker()
+        if sam2.isAvailable {
+            print("[MLPipelineCoordinator] using SAM2BallTracker")
+            return sam2
+        }
+        print("[MLPipelineCoordinator] SAM2 model not bundled — falling back to VisionBallTracker")
+        return VisionBallTracker()
     }
 
     /// Wires the coordinator into the Flutter engine. Call once during
