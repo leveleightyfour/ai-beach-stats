@@ -27,12 +27,12 @@ import Foundation
 ///
 /// ## Sourcing the models
 ///
-/// Apple publishes CoreML ports of SAM 2 on Hugging Face. Current
+/// Apple publishes CoreML ports of SAM 2.1 on Hugging Face. Current
 /// defaults are the Tiny FLOAT16 variant filenames:
 ///
-///   - `SAM2TinyImageEncoderFLOAT16.mlpackage`
-///   - `SAM2TinyPromptEncoderFLOAT16.mlpackage`
-///   - `SAM2TinyMaskDecoderFLOAT16.mlpackage`
+///   - `SAM2_1TinyImageEncoderFLOAT16.mlpackage`
+///   - `SAM2_1TinyPromptEncoderFLOAT16.mlpackage`
+///   - `SAM2_1TinyMaskDecoderFLOAT16.mlpackage`
 ///
 /// Drop all three into `ios/Runner/Models/` and add each to the Runner
 /// target in Xcode (Action: Reference files in place, ✅ Runner target).
@@ -44,9 +44,9 @@ import Foundation
 /// ~1-2 minutes processing. Larger variants ramp to 10× that.
 final class SAM2BallTracker: BallTracking {
     init(
-        imageEncoderName: String = "SAM2TinyImageEncoderFLOAT16",
-        promptEncoderName: String = "SAM2TinyPromptEncoderFLOAT16",
-        maskDecoderName: String = "SAM2TinyMaskDecoderFLOAT16",
+        imageEncoderName: String = "SAM2_1TinyImageEncoderFLOAT16",
+        promptEncoderName: String = "SAM2_1TinyPromptEncoderFLOAT16",
+        maskDecoderName: String = "SAM2_1TinyMaskDecoderFLOAT16",
         maxSessionFrames: Int = 60
     ) {
         self.imageEncoderName = imageEncoderName
