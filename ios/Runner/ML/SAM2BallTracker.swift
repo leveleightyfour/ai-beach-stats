@@ -1,52 +1,67 @@
 import CoreMedia
 import CoreML
 import Foundation
-import Vision
 
 /// SAM 2-based ball tracker. Drop-in replacement for `VisionBallTracker`
-/// behind the same `BallTracking` protocol.
+/// behind the `BallTracking` protocol.
 ///
-/// ## Sourcing the model
+/// ## Architecture
 ///
-/// Apple publishes CoreML ports of SAM 2 on Hugging Face. Tiny is the
-/// only size that fits our per-frame budget on iPad (~30-80ms encoder
-/// pass on Neural Engine; larger sizes balloon to 200ms+):
+/// SAM 2 inference is a 3-stage chain (same shape across Apple's
+/// published CoreML port and the upstream Meta models):
 ///
-/// - https://huggingface.co/apple/coreml-sam2-tiny
-/// - Download the image-encoder and mask-decoder packages.
-/// - Rename to `SAM2ImageEncoder.mlpackage` and `SAM2MaskDecoder.mlpackage`
-///   (or change the filenames in `loadModelsIfNeeded()` below).
-/// - Drop both into `ios/Runner/Models/` and add to the Runner target
-///   in Xcode (Action: Reference files in place, ✅ Runner target).
+///   1. **Image encoder** — runs once per frame on the source image,
+///      produces multi-scale Hiera feature maps. Most of the per-frame
+///      cost lives here.
+///   2. **Prompt encoder** — encodes the box/point/mask prompt for
+///      *what to segment*. Cheap.
+///   3. **Mask decoder** — combines image features + prompt embedding
+///      to produce a segmentation mask.
 ///
-/// ## Implementation status (commit 1 of 2)
+/// For our pipeline we prompt with the previous frame's bbox centre
+/// (point prompt). The first commit of this class is structural only —
+/// `predict()` is a stub that logs and returns nil. The next commit
+/// wires the real inference once we've seen the actual model
+/// input/output tensor shapes (logged on first model load — see
+/// `describeModel`).
 ///
-/// The class loads the model files and exposes the `BallTracking` API,
-/// but `predict()` is currently a stub. The actual Hiera encoder pass,
-/// prompt encoding, memory bank propagation, and mask decoding go in
-/// the next commit — I need to inspect Apple's actual generated .mlpackage
-/// inputs/outputs to get tensor shapes right. Until then, if the SAM 2
-/// model is bundled this tracker logs and returns nil from predict
-/// (effectively disabling tracking and falling back to detector-per-frame).
-/// `MLPipelineCoordinator.pickBallTracker()` only selects this tracker
-/// when both `.mlpackage` files are in the bundle; otherwise the
-/// existing `VisionBallTracker` is used.
+/// ## Sourcing the models
+///
+/// Apple publishes CoreML ports of SAM 2 on Hugging Face. The current
+/// defaults match the "Large FLOAT16" variant filenames:
+///
+///   - `SAM2LargeImageEncoderFLOAT16.mlpackage`
+///   - `SAM2LargePromptEncoderFLOAT16.mlpackage`
+///   - `SAM2LargeMaskDecoderFLOAT16.mlpackage`
+///
+/// Drop all three into `ios/Runner/Models/` and add each to the Runner
+/// target in Xcode (Action: Reference files in place, ✅ Runner target).
+/// For the Tiny variant, change the names passed to `init` (or rename
+/// the files to match the defaults).
+///
+/// Performance heads-up for Large on iPad M4 — image encoder pass is
+/// roughly 300-500ms. A 145s clip at 15Hz target = ~2,400 frames =
+/// 12-20 minutes wall-clock. Tiny is ~10x faster.
 final class SAM2BallTracker: BallTracking {
     init(
-        encoderName: String = "SAM2ImageEncoder",
-        decoderName: String = "SAM2MaskDecoder",
+        imageEncoderName: String = "SAM2LargeImageEncoderFLOAT16",
+        promptEncoderName: String = "SAM2LargePromptEncoderFLOAT16",
+        maskDecoderName: String = "SAM2LargeMaskDecoderFLOAT16",
         maxSessionFrames: Int = 60
     ) {
-        self.encoderName = encoderName
-        self.decoderName = decoderName
+        self.imageEncoderName = imageEncoderName
+        self.promptEncoderName = promptEncoderName
+        self.maskDecoderName = maskDecoderName
         self.maxSessionFrames = maxSessionFrames
     }
 
-    private let encoderName: String
-    private let decoderName: String
+    private let imageEncoderName: String
+    private let promptEncoderName: String
+    private let maskDecoderName: String
     private let maxSessionFrames: Int
 
     private var imageEncoder: MLModel?
+    private var promptEncoder: MLModel?
     private var maskDecoder: MLModel?
     private var modelLoadAttempted = false
 
@@ -56,7 +71,9 @@ final class SAM2BallTracker: BallTracking {
 
     var isAvailable: Bool {
         loadModelsIfNeeded()
-        return imageEncoder != nil && maskDecoder != nil
+        return imageEncoder != nil
+            && promptEncoder != nil
+            && maskDecoder != nil
     }
 
     var isSessionActive: Bool { sessionActive }
@@ -74,7 +91,10 @@ final class SAM2BallTracker: BallTracking {
 
     func predict(in frame: PipelineFrame) async throws -> BallDetection? {
         guard sessionActive, lastBoundingBox != nil else { return nil }
-        guard imageEncoder != nil, maskDecoder != nil else {
+        guard imageEncoder != nil,
+              promptEncoder != nil,
+              maskDecoder != nil
+        else {
             endSession()
             return nil
         }
@@ -85,25 +105,19 @@ final class SAM2BallTracker: BallTracking {
             return nil
         }
 
-        // TODO(commit 2): orchestrate the SAM 2 inference chain:
+        // TODO(commit 2): orchestrate the inference chain:
         //
-        //   1. Run image encoder on `frame.pixelBuffer` to produce
-        //      multi-scale Hiera feature maps (size depends on encoder
-        //      variant — usually 256×256 features at multiple scales).
-        //   2. Construct the prompt embedding from `lastBoundingBox`
-        //      (point prompt at bbox centre is the simplest workable
-        //      choice; box prompt is more accurate but requires the
-        //      box-prompt input pipeline in the .mlpackage).
-        //   3. Optionally apply memory attention from the prior frame's
-        //      decoded features (the temporal-tracking part). Skipping
-        //      this for a first pass would still give us a per-frame
-        //      "find the ball near here" — already better than Vision's
-        //      correlation drift.
-        //   4. Run mask decoder to produce a segmentation mask.
-        //   5. Compute bbox = bounding box of mask above some
-        //      confidence threshold. Reject if mask is empty or area is
-        //      out of plausible-ball-size range.
-        //   6. Update `lastBoundingBox`, increment `sessionFrameCount`,
+        //   1. Image encoder: feed frame.pixelBuffer (resized/normalised
+        //      to the encoder's expected input — typically 1024x1024)
+        //      and read the feature-map outputs.
+        //   2. Prompt encoder: feed the centre of lastBoundingBox as a
+        //      point prompt (or the bbox itself as a box prompt — TBD
+        //      once we see the prompt-encoder input schema).
+        //   3. Mask decoder: combine encoder features + prompt
+        //      embeddings, read mask + score.
+        //   4. If score below threshold or mask empty/improbably-sized,
+        //      end session and return nil.
+        //   5. Else compute bbox of mask, update lastBoundingBox,
         //      return BallDetection.
 
         print("[SAM2BallTracker] predict() not yet implemented; ending session at frame \(frame.frameIndex)")
@@ -121,7 +135,9 @@ final class SAM2BallTracker: BallTracking {
     }
 
     private func loadModelsIfNeeded() {
-        if imageEncoder != nil && maskDecoder != nil { return }
+        if imageEncoder != nil && promptEncoder != nil && maskDecoder != nil {
+            return
+        }
         if modelLoadAttempted { return }
         modelLoadAttempted = true
 
@@ -136,23 +152,64 @@ final class SAM2BallTracker: BallTracking {
             return nil
         }
 
-        guard let encoderURL = find(encoderName) else {
-            print("[SAM2BallTracker] '\(encoderName)' not bundled — disabled.")
+        guard let encURL = find(imageEncoderName) else {
+            print("[SAM2BallTracker] '\(imageEncoderName)' not bundled — disabled.")
             return
         }
-        guard let decoderURL = find(decoderName) else {
-            print("[SAM2BallTracker] '\(decoderName)' not bundled — disabled.")
+        guard let promptURL = find(promptEncoderName) else {
+            print("[SAM2BallTracker] '\(promptEncoderName)' not bundled — disabled.")
+            return
+        }
+        guard let decURL = find(maskDecoderName) else {
+            print("[SAM2BallTracker] '\(maskDecoderName)' not bundled — disabled.")
             return
         }
 
         do {
-            imageEncoder = try MLModel(contentsOf: encoderURL)
-            maskDecoder = try MLModel(contentsOf: decoderURL)
-            print("[SAM2BallTracker] models loaded; ready (predict still stubbed)")
+            let encoder = try MLModel(contentsOf: encURL)
+            let prompter = try MLModel(contentsOf: promptURL)
+            let decoder = try MLModel(contentsOf: decURL)
+            imageEncoder = encoder
+            promptEncoder = prompter
+            maskDecoder = decoder
+            print("[SAM2BallTracker] all three models loaded; ready (predict still stubbed)")
+            Self.describeModel(encoder, label: "ImageEncoder")
+            Self.describeModel(prompter, label: "PromptEncoder")
+            Self.describeModel(decoder, label: "MaskDecoder")
         } catch {
             print("[SAM2BallTracker] model load failed: \(error)")
             imageEncoder = nil
+            promptEncoder = nil
             maskDecoder = nil
         }
+    }
+
+    /// Logs the input + output names, types, and (where available)
+    /// tensor shapes for a freshly-loaded MLModel. Used once on first
+    /// load so we can see Apple's actual generated tensor schema
+    /// before wiring inference in commit 2.
+    private static func describeModel(_ model: MLModel, label: String) {
+        let desc = model.modelDescription
+        print("[SAM2BallTracker] --- \(label) inputs ---")
+        for (key, feature) in desc.inputDescriptionsByName {
+            print("  - \(key): \(describe(feature))")
+        }
+        print("[SAM2BallTracker] --- \(label) outputs ---")
+        for (key, feature) in desc.outputDescriptionsByName {
+            print("  - \(key): \(describe(feature))")
+        }
+    }
+
+    private static func describe(_ feature: MLFeatureDescription) -> String {
+        var parts: [String] = ["type=\(feature.type.rawValue)"]
+        if let mac = feature.multiArrayConstraint {
+            let shape = mac.shape.map(\.intValue)
+            parts.append("shape=\(shape)")
+            parts.append("dataType=\(mac.dataType.rawValue)")
+        }
+        if let ic = feature.imageConstraint {
+            parts.append("image=\(ic.pixelsWide)x\(ic.pixelsHigh)")
+        }
+        return parts.joined(separator: " ")
     }
 }
