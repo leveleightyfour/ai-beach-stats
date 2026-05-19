@@ -197,16 +197,22 @@ final class SAM2BallTracker: BallTracking {
             // --- 5. Pick best mask candidate ---
             var bestScore: Float = -.infinity
             var bestIdx = 0
+            var allScores: [Float] = []
             for i in 0..<3 {
                 let s = scores[[0, i] as [NSNumber]].floatValue
+                allScores.append(s)
                 if s > bestScore {
                     bestScore = s
                     bestIdx = i
                 }
             }
+            let isFirstAttempt = (sessionFrameCount == 0)
+            if isFirstAttempt {
+                print("[SAM2BallTracker] inference#1 frame=\(frame.frameIndex) promptInputPx=(\(inputX), \(inputY)) scores=\(allScores) bestIdx=\(bestIdx)")
+            }
             if bestScore < Self.minScore {
-                if sessionFrameCount == 0 {
-                    print("[SAM2BallTracker] no confident mask (score=\(bestScore)) on first predict; ending")
+                if isFirstAttempt {
+                    print("[SAM2BallTracker]   -> score \(bestScore) < \(Self.minScore); ending")
                 }
                 endSession()
                 return nil
@@ -218,9 +224,13 @@ final class SAM2BallTracker: BallTracking {
             var maxX = -1
             var maxY = -1
             var pixelCount = 0
+            var maskMin: Float = .infinity
+            var maskMax: Float = -.infinity
             for my in 0..<Self.maskSide {
                 for mx in 0..<Self.maskSide {
                     let val = masks[[0, bestIdx, my, mx] as [NSNumber]].floatValue
+                    if val < maskMin { maskMin = val }
+                    if val > maskMax { maskMax = val }
                     if val > 0 {
                         if mx < minX { minX = mx }
                         if my < minY { minY = my }
@@ -230,7 +240,13 @@ final class SAM2BallTracker: BallTracking {
                     }
                 }
             }
+            if isFirstAttempt {
+                print("[SAM2BallTracker]   maskLogits min=\(maskMin) max=\(maskMax) pixelsAbove0=\(pixelCount)")
+            }
             guard pixelCount > 0 else {
+                if isFirstAttempt {
+                    print("[SAM2BallTracker]   -> empty mask; ending")
+                }
                 endSession()
                 return nil
             }
@@ -247,6 +263,9 @@ final class SAM2BallTracker: BallTracking {
                 width: x2Src - x1Src,
                 height: y2Src - y1Src
             )
+            if isFirstAttempt {
+                print("[SAM2BallTracker]   sourceBbox=\(newBbox) (minScore=\(Self.minScore), minSide=\(Self.minBboxSide), maxSide=\(Self.maxBboxSide))")
+            }
 
             // --- 8. Plausibility checks ---
             if newBbox.width < Self.minBboxSide
@@ -254,6 +273,9 @@ final class SAM2BallTracker: BallTracking {
                 || newBbox.width > Self.maxBboxSide
                 || newBbox.height > Self.maxBboxSide
             {
+                if isFirstAttempt {
+                    print("[SAM2BallTracker]   -> bbox out of plausible range; ending")
+                }
                 endSession()
                 return nil
             }
