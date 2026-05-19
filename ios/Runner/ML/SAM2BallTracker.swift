@@ -165,10 +165,28 @@ final class SAM2BallTracker: BallTracking {
             return
         }
 
+        print("[SAM2BallTracker] resolved bundle URLs:")
+        print("  encoder: \(encURL.lastPathComponent)")
+        print("  prompt : \(promptURL.lastPathComponent)")
+        print("  decoder: \(decURL.lastPathComponent)")
+        print("[SAM2BallTracker] loading models (first run may take a minute for ANE compilation)…")
+
         do {
+            let t0 = Date()
+            print("[SAM2BallTracker] loading image encoder…")
             let encoder = try MLModel(contentsOf: encURL)
+            print("[SAM2BallTracker] image encoder loaded in \(String(format: "%.1f", Date().timeIntervalSince(t0)))s")
+
+            let t1 = Date()
+            print("[SAM2BallTracker] loading prompt encoder…")
             let prompter = try MLModel(contentsOf: promptURL)
+            print("[SAM2BallTracker] prompt encoder loaded in \(String(format: "%.1f", Date().timeIntervalSince(t1)))s")
+
+            let t2 = Date()
+            print("[SAM2BallTracker] loading mask decoder…")
             let decoder = try MLModel(contentsOf: decURL)
+            print("[SAM2BallTracker] mask decoder loaded in \(String(format: "%.1f", Date().timeIntervalSince(t2)))s")
+
             imageEncoder = encoder
             promptEncoder = prompter
             maskDecoder = decoder
