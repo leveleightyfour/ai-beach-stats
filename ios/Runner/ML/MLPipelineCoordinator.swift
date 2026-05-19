@@ -94,10 +94,15 @@ final class MLPipelineCoordinator: MLPipelineHostApi {
             detectionConfidenceThreshold: config.detectionConfidenceThreshold
         )
 
-        let runner = runnerFactory(runtimeConfig)
+        // Ack the Pigeon call first and do all heavy work (model load,
+        // factory invocation, runner construction) inside the detached
+        // task. CoreML model loads can take many seconds on first
+        // invocation — synchronous loading here was blocking the
+        // Pigeon dispatch queue and freezing the UI.
         let task = Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             print("[MLPipelineCoordinator] session task started sessionId=\(sessionId)")
+            let runner = self.runnerFactory(runtimeConfig)
             let stream = runner.run(
                 sessionId: sessionId,
                 matchId: matchId,
