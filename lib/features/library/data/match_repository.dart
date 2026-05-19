@@ -40,6 +40,7 @@ class MatchRepository {
             processedAt: Value(match.processedAt),
             frameWidth: Value(match.frameWidth),
             frameHeight: Value(match.frameHeight),
+            pipelineDurationMs: Value(match.pipelineDurationMs),
           ),
         );
   }
@@ -49,12 +50,14 @@ class MatchRepository {
     required DateTime processedAt,
     required int frameWidth,
     required int frameHeight,
+    required int pipelineDurationMs,
   }) async {
     await (_db.update(_db.matches)..where((t) => t.id.equals(matchId))).write(
       MatchesCompanion(
         processedAt: Value(processedAt),
         frameWidth: Value(frameWidth),
         frameHeight: Value(frameHeight),
+        pipelineDurationMs: Value(pipelineDurationMs),
       ),
     );
   }
@@ -65,6 +68,7 @@ class MatchRepository {
         processedAt: Value(null),
         frameWidth: Value(null),
         frameHeight: Value(null),
+        pipelineDurationMs: Value(null),
       ),
     );
   }
@@ -83,5 +87,6 @@ class MatchRepository {
         processedAt: row.processedAt,
         frameWidth: row.frameWidth,
         frameHeight: row.frameHeight,
+        pipelineDurationMs: row.pipelineDurationMs,
       );
 }

@@ -25,6 +25,7 @@ class AnalysisRepository {
         processedAt: DateTime.now(),
         frameWidth: result.frameWidth,
         frameHeight: result.frameHeight,
+        pipelineDurationMs: result.totalDurationMs,
       );
     });
   }

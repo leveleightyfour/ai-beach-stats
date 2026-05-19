@@ -14,6 +14,7 @@ import '../../analysis/domain/rally.dart';
 import '../../library/application/library_providers.dart';
 import '../application/review_providers.dart';
 import 'widgets/ball_overlay.dart';
+import 'widgets/match_summary.dart';
 import 'widgets/rally_timeline.dart';
 import 'widgets/video_controls.dart';
 
@@ -95,6 +96,31 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     context.pushReplacement('/analysis/${widget.matchId}');
   }
 
+  Future<void> _onShowDetails() async {
+    final match = await ref
+        .read(matchRepositoryProvider)
+        .findById(widget.matchId);
+    if (match == null || !mounted) return;
+    final rallies = ref.read(matchRalliesProvider(widget.matchId)).valueOrNull
+        ?? const [];
+    final observationCount = ref
+            .read(matchBallObservationsProvider(widget.matchId))
+            .valueOrNull
+            ?.length ??
+        0;
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: false,
+      isScrollControlled: true,
+      builder: (_) => MatchDetailsSheet(
+        match: match,
+        rallies: rallies,
+        ballObservationCount: observationCount,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final match = ref.watch(matchByIdProvider(widget.matchId));
@@ -102,6 +128,11 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       appBar: AppBar(
         title: Text(match.valueOrNull?.title ?? 'Review'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'Match details',
+            onPressed: _onShowDetails,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Re-process',
@@ -172,6 +203,8 @@ class _ReviewBody extends ConsumerWidget {
             rallies: ralliesAsync,
             observations: observationsAsync,
           ),
+          if (ralliesAsync.valueOrNull != null)
+            MatchTouchSummary(rallies: ralliesAsync.value!),
           Expanded(
             child: ralliesAsync.when(
               skipLoadingOnReload: true,

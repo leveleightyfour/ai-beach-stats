@@ -30,6 +30,11 @@ class Matches extends Table {
   IntColumn get frameWidth => integer().nullable()();
   IntColumn get frameHeight => integer().nullable()();
 
+  /// Wall-clock time the pipeline run took, in milliseconds. Nullable
+  /// because rows imported before v5 don't have this. Surfaces in the
+  /// match details sheet on the review screen.
+  IntColumn get pipelineDurationMs => integer().nullable()();
+
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
@@ -89,7 +94,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -97,17 +102,23 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
         },
         onUpgrade: (m, from, to) async {
-          // Prototype convenience: no shipped data yet. Wipe and rebuild on
-          // any version bump. Replace with a real migration once we have
-          // installs to preserve.
-          await customStatement('PRAGMA foreign_keys = OFF');
-          for (final table in allTables) {
-            await customStatement(
-              'DROP TABLE IF EXISTS ${table.actualTableName}',
-            );
+          if (from < 4) {
+            // Pre-v4 schemas were prototype-only. Wipe.
+            await customStatement('PRAGMA foreign_keys = OFF');
+            for (final table in allTables) {
+              await customStatement(
+                'DROP TABLE IF EXISTS ${table.actualTableName}',
+              );
+            }
+            await m.createAll();
+            await customStatement('PRAGMA foreign_keys = ON');
+            return;
           }
-          await m.createAll();
-          await customStatement('PRAGMA foreign_keys = ON');
+          if (from < 5) {
+            // Additive: add the new pipelineDurationMs column. Existing
+            // rows get NULL, which the UI handles ("Duration: —").
+            await m.addColumn(matches, matches.pipelineDurationMs);
+          }
         },
       );
 }

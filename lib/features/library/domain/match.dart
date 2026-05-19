@@ -9,6 +9,7 @@ class Match {
     this.processedAt,
     this.frameWidth,
     this.frameHeight,
+    this.pipelineDurationMs,
   });
 
   final String id;
@@ -32,6 +33,10 @@ class Match {
   /// Source-video resolution recorded during processing.
   final int? frameWidth;
   final int? frameHeight;
+
+  /// Wall-clock duration of the last successful pipeline run.
+  /// Null if the match hasn't been processed under v5+ schema.
+  final int? pipelineDurationMs;
 
   bool get isProcessed => processedAt != null;
 }
