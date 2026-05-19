@@ -135,7 +135,7 @@ final class SAM2BallTracker: BallTracking {
             }
 
             // --- 2. Image encoder ---
-            let encOut = try encoder.prediction(
+            let encOut = try await encoder.prediction(
                 from: try MLDictionaryFeatureProvider(dictionary: [
                     "image": MLFeatureValue(pixelBuffer: resized),
                 ])
@@ -162,7 +162,7 @@ final class SAM2BallTracker: BallTracking {
             let labels = try MLMultiArray(shape: [1, 1], dataType: .float16)
             labels[[0, 0] as [NSNumber]] = NSNumber(value: Float(1))
 
-            let promptOut = try prompter.prediction(
+            let promptOut = try await prompter.prediction(
                 from: try MLDictionaryFeatureProvider(dictionary: [
                     "points": MLFeatureValue(multiArray: points),
                     "labels": MLFeatureValue(multiArray: labels),
@@ -177,7 +177,7 @@ final class SAM2BallTracker: BallTracking {
             }
 
             // --- 4. Mask decoder ---
-            let decOut = try decoder.prediction(
+            let decOut = try await decoder.prediction(
                 from: try MLDictionaryFeatureProvider(dictionary: [
                     "feats_s0": MLFeatureValue(multiArray: featsS0),
                     "feats_s1": MLFeatureValue(multiArray: featsS1),
